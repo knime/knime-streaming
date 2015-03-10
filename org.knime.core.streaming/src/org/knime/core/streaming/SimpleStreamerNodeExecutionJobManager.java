@@ -65,7 +65,7 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     /** {@inheritDoc} */
     @Override
     public NodeExecutionJob submitJob(final NodeContainer nc, final PortObject[] data) {
-        return null;
+        return new SimpleStreamerNodeExecutionJob(nc, data);
     }
 
     /** {@inheritDoc} */
