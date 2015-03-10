@@ -77,7 +77,7 @@ public class InMemoryRowOutput extends RowOutput {
     public void push(final DataRow row) throws InterruptedException {
         m_rows.add(row);
         if (m_rows.size() == CHUNK_SIZE) {
-            m_rowCache.addChunk(m_rows);
+            m_rowCache.addChunk(m_rows, false);
             m_rows = new ArrayList<DataRow>(CHUNK_SIZE);
         }
     }
@@ -86,7 +86,7 @@ public class InMemoryRowOutput extends RowOutput {
     @Override
     public void close() {
         try {
-            m_rowCache.addChunk(m_rows);
+            m_rowCache.addChunk(m_rows, true);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

@@ -48,80 +48,54 @@
  */
 package org.knime.core.streaming.inoutput;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.knime.core.data.DataRow;
-import org.knime.core.node.util.CheckUtils;
+import org.knime.core.data.DataTableSpec;
+import org.knime.core.node.streamable.RowInput;
 
 /**
- * A cache that gets filled by a producer node (upstream) and that is consumed by multiple (0-n) consumer nodes
- * (down-stream). If all consumers have fetched the current chunk that chunk will be released and new data from the
- * producer is accepted.
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
-public final class InMemoryRowCache {
+public class InMemoryRowInput extends RowInput {
 
-    private final int m_nrConsumers;
+    private final InMemoryRowCache m_rowCache;
+    private final DataTableSpec m_spec;
     private List<DataRow> m_currentChunk;
-    private final Set<Object> m_consumers;
-    private final ReentrantLock m_lock;
-    private final Condition m_acceptProduceCondition;
-    private final Condition m_requireConsumeCondition;
-    private boolean m_isLast;
+    private int m_indexInChunk;
 
-    /** New cache based on a number of consumers.
-     * @param nrConsumers ... */
-    public InMemoryRowCache(final int nrConsumers) {
-        CheckUtils.checkArgument(nrConsumers >= 0, "Consumer count not >= 0: " + nrConsumers);
-        m_consumers = new HashSet<Object>();
-        m_nrConsumers = nrConsumers;
-        m_lock = new ReentrantLock();
-        m_acceptProduceCondition = m_lock.newCondition();
-        m_requireConsumeCondition = m_lock.newCondition();
+    /**
+     *
+     */
+    public InMemoryRowInput(final DataTableSpec spec, final InMemoryRowCache rowCache) {
+        m_spec = spec;
+        m_rowCache = rowCache;
     }
 
-    public void addChunk(final List<DataRow> rows, final boolean isLast) throws InterruptedException {
-        CheckUtils.checkState(!m_isLast, "Previous chunk was already the last one");
-        CheckUtils.checkNotNull(rows, "Rows argument must not be null");
-        m_lock.lockInterruptibly();
-        try {
-            while (m_consumers.size() != m_nrConsumers) {
-                m_acceptProduceCondition.await();
-            }
-            m_consumers.clear();
-            m_currentChunk = rows;
-            m_isLast = isLast;
-            m_requireConsumeCondition.signalAll();
-        } finally {
-            m_lock.unlock();
-        }
+    /** {@inheritDoc} */
+    @Override
+    public DataTableSpec getDataTableSpec() {
+        return m_spec;
     }
 
-    public List<DataRow> getChunk(final Object consumer) throws InterruptedException {
-        m_lock.lockInterruptibly();
-        try {
-            if (m_isLast && m_currentChunk == null) {
-                return null;
-            }
-            while (!m_consumers.add(consumer)) {
-                m_requireConsumeCondition.await();
-            }
-            final List<DataRow> currentChunk = m_currentChunk;
-            if (m_consumers.size() == m_nrConsumers) {
-                m_acceptProduceCondition.signalAll();
-                if (m_isLast) {
-                    m_currentChunk = null;
-                }
-            }
-            return currentChunk;
-        } finally {
-            m_lock.unlock();
+    /** {@inheritDoc} */
+    @Override
+    public DataRow poll() throws InterruptedException {
+        if (m_currentChunk == null || m_indexInChunk >= m_currentChunk.size()) {
+            m_currentChunk = m_rowCache.getChunk(this);
+            m_indexInChunk = 0;
         }
+        if (m_currentChunk == null || m_indexInChunk >= m_currentChunk.size()) {
+            return null;
+        }
+        return m_currentChunk.get(m_indexInChunk++);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void close() {
+
     }
 
 }
