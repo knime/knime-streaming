@@ -58,7 +58,7 @@ import org.knime.core.node.streamable.RowOutput;
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
-public class InMemoryRowOutput extends RowOutput {
+public final class InMemoryRowOutput extends RowOutput {
 
     private static final int CHUNK_SIZE = 50;
     private final InMemoryRowCache m_rowCache;
@@ -67,7 +67,7 @@ public class InMemoryRowOutput extends RowOutput {
     /**
      *
      */
-    public InMemoryRowOutput(final InMemoryRowCache rowCache) {
+    InMemoryRowOutput(final InMemoryRowCache rowCache) {
         m_rowCache = rowCache;
         m_rows = new ArrayList<DataRow>(CHUNK_SIZE);
     }

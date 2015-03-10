@@ -55,6 +55,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.knime.core.data.DataRow;
+import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.util.CheckUtils;
 
 /**
@@ -68,21 +69,31 @@ public final class InMemoryRowCache {
 
     private final int m_nrConsumers;
     private List<DataRow> m_currentChunk;
-    private final Set<Object> m_consumers;
+    private final Set<InMemoryRowInput> m_consumers;
     private final ReentrantLock m_lock;
     private final Condition m_acceptProduceCondition;
     private final Condition m_requireConsumeCondition;
+    private final DataTableSpec m_spec;
     private boolean m_isLast;
 
     /** New cache based on a number of consumers.
      * @param nrConsumers ... */
-    public InMemoryRowCache(final int nrConsumers) {
+    public InMemoryRowCache(final int nrConsumers, final DataTableSpec spec) {
+        m_spec = spec;
         CheckUtils.checkArgument(nrConsumers >= 0, "Consumer count not >= 0: " + nrConsumers);
-        m_consumers = new HashSet<Object>();
+        m_consumers = new HashSet<>();
         m_nrConsumers = nrConsumers;
         m_lock = new ReentrantLock();
         m_acceptProduceCondition = m_lock.newCondition();
         m_requireConsumeCondition = m_lock.newCondition();
+    }
+
+    public InMemoryRowInput createRowInput() {
+        return new InMemoryRowInput(m_spec, this);
+    }
+
+    public InMemoryRowOutput createRowOutput() {
+        return new InMemoryRowOutput(this);
     }
 
     public void addChunk(final List<DataRow> rows, final boolean isLast) throws InterruptedException {
@@ -102,7 +113,7 @@ public final class InMemoryRowCache {
         }
     }
 
-    public List<DataRow> getChunk(final Object consumer) throws InterruptedException {
+    public List<DataRow> getChunk(final InMemoryRowInput consumer) throws InterruptedException {
         m_lock.lockInterruptibly();
         try {
             if (m_isLast && m_currentChunk == null) {

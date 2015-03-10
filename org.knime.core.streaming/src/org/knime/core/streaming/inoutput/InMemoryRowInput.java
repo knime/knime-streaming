@@ -58,17 +58,17 @@ import org.knime.core.node.streamable.RowInput;
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
-public class InMemoryRowInput extends RowInput {
+public final class InMemoryRowInput extends RowInput {
 
     private final InMemoryRowCache m_rowCache;
     private final DataTableSpec m_spec;
     private List<DataRow> m_currentChunk;
-    private int m_indexInChunk;
+    private int m_iteratorIndex;
 
     /**
      *
      */
-    public InMemoryRowInput(final DataTableSpec spec, final InMemoryRowCache rowCache) {
+    InMemoryRowInput(final DataTableSpec spec, final InMemoryRowCache rowCache) {
         m_spec = spec;
         m_rowCache = rowCache;
     }
@@ -82,14 +82,14 @@ public class InMemoryRowInput extends RowInput {
     /** {@inheritDoc} */
     @Override
     public DataRow poll() throws InterruptedException {
-        if (m_currentChunk == null || m_indexInChunk >= m_currentChunk.size()) {
+        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
             m_currentChunk = m_rowCache.getChunk(this);
-            m_indexInChunk = 0;
+            m_iteratorIndex = 0;
         }
-        if (m_currentChunk == null || m_indexInChunk >= m_currentChunk.size()) {
+        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
             return null;
         }
-        return m_currentChunk.get(m_indexInChunk++);
+        return m_currentChunk.get(m_iteratorIndex++);
     }
 
     /** {@inheritDoc} */
