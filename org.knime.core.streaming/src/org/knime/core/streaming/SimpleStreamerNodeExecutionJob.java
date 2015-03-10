@@ -52,7 +52,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Set;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.node.NodeLogger;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.PartitionInfo;
@@ -102,51 +104,55 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches
             = new LinkedHashMap<Pair<NodeID, Integer>, InMemoryRowCache>();
         for (NodeContainer nc : wfm.getNodeContainers()) {
-            if (!(nodeContainer instanceof NativeNodeContainer)) {
+            if (!(nc instanceof NativeNodeContainer)) {
                 return NodeContainerExecutionStatus.FAILURE;
             }
-            for (int op = 0; op < nc.getNrOutPorts(); op++) {
-                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
-                DataTableSpec spec = (DataTableSpec)(nc.getOutPort(op).getPortObjectSpec());
+            for (int op = 0; op < nc.getNrOutPorts() - 1; op++) {
+                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op + 1);
+                DataTableSpec spec = (DataTableSpec)(nc.getOutPort(op + 1).getPortObjectSpec());
                 connectionCaches.put(new Pair<NodeID, Integer>(nc.getID(), op), new InMemoryRowCache(ccs.size(), spec));
             }
         }
         for (NodeContainer nc : wfm.getNodeContainers()) {
             final NativeNodeContainer nnc = (NativeNodeContainer)nc;
             // collect incoming caches
-            final InMemoryRowInput[]  inCaches = new InMemoryRowInput[nnc.getNrInPorts()];
+            final InMemoryRowInput[]  inCaches = new InMemoryRowInput[nnc.getNrInPorts() - 1];
             for (int i = 0; i < inCaches.length; i++) {
-                ConnectionContainer cc = wfm.getIncomingConnectionFor(nnc.getID(), i);
+                ConnectionContainer cc = wfm.getIncomingConnectionFor(nnc.getID(), i + 1);
                 if (cc == null) {
                     return NodeContainerExecutionStatus.FAILURE;
                 }
-                InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(cc.getSource(), cc.getSourcePort()));
+                InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(cc.getSource(), cc.getSourcePort() - 1));
                 inCaches[i] = imrc.createRowInput();
             }
             // collect outgoing caches
-            final InMemoryRowOutput[]  outCaches = new InMemoryRowOutput[nnc.getNrOutPorts()];
+            final InMemoryRowOutput[]  outCaches = new InMemoryRowOutput[nnc.getNrOutPorts() - 1];
             for (int o = 0; o < outCaches.length; o++) {
                 InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(nnc.getID(), o));
                 outCaches[o] = imrc.createRowOutput();
             }
             // initiate actual work
             try {
-                PortObjectSpec specs[] = new PortObjectSpec[nnc.getNrOutPorts()];
-                for (int o = 0; o < nnc.getNrOutPorts(); o++) {
-                    specs[o] = nnc.getOutPort(o).getPortObjectSpec();
-                }
+                PortObjectSpec[] inSpecs = new PortObjectSpec[nnc.getNrInPorts()];
+                wfm.assembleInputSpecs(nnc.getID(), inSpecs);
+                inSpecs = ArrayUtils.remove(inSpecs, 0);
                 final StreamableOperator strop = nnc.getNodeModel().createStreamableOperator(
-                    new PartitionInfo(0, 1), specs);
+                    new PartitionInfo(0, 1), inSpecs);
                 ThreadUtils.threadWithContext(new Runnable() {
                     @Override
                     public void run() {
                         try {
                             strop.runFinal(inCaches, outCaches, nnc.createExecutionContext());
-                        } catch (Exception e) {};
+                        } catch (Throwable e) {
+                            NodeLogger.getLogger(getClass()).error(e.getMessage(), e);
+                        }
                     }
-                }, "Mein Thread").start();
-            } catch (Exception e) {};        }
-        return null;
+                }, nnc.getNameWithID()).start();
+            } catch (Exception e) {
+                NodeLogger.getLogger(getClass()).error(e.getMessage(), e);
+            }
+        }
+        return NodeContainerExecutionStatus.SUCCESS;
     }
 
     /** {@inheritDoc} */

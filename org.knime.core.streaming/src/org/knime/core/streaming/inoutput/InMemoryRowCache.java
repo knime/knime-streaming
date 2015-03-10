@@ -101,7 +101,7 @@ public final class InMemoryRowCache {
         CheckUtils.checkNotNull(rows, "Rows argument must not be null");
         m_lock.lockInterruptibly();
         try {
-            while (m_consumers.size() != m_nrConsumers) {
+            while (m_currentChunk != null && m_consumers.size() < m_nrConsumers) {
                 m_acceptProduceCondition.await();
             }
             m_consumers.clear();
@@ -116,8 +116,12 @@ public final class InMemoryRowCache {
     public List<DataRow> getChunk(final InMemoryRowInput consumer) throws InterruptedException {
         m_lock.lockInterruptibly();
         try {
-            if (m_isLast && m_currentChunk == null) {
-                return null;
+            while(m_currentChunk == null) {
+                if (m_isLast) {
+                    return null;
+                } else {
+                    m_requireConsumeCondition.await();
+                }
             }
             while (!m_consumers.add(consumer)) {
                 m_requireConsumeCondition.await();
