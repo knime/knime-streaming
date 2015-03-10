@@ -77,7 +77,7 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     /** {@inheritDoc} */
     @Override
     public URL getIcon() {
-        return getClass().getResource("streaming.png");
+        return getClass().getResource("icons/streaming.png");
     }
 
     /** {@inheritDoc} */
@@ -89,7 +89,7 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     /** {@inheritDoc} */
     @Override
     public URL getIconForWorkflow() {
-        return getClass().getResource("streaming_flow.png");
+        return getClass().getResource("icons/streaming_flow.png");
     }
 
 }
