@@ -48,11 +48,28 @@
  */
 package org.knime.core.streaming;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Set;
+
+import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.port.PortObject;
+import org.knime.core.node.port.PortObjectSpec;
+import org.knime.core.node.streamable.PartitionInfo;
+import org.knime.core.node.streamable.StreamableOperator;
+import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContainer;
 import org.knime.core.node.workflow.NodeExecutionJob;
+import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.SubNodeContainer;
+import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.execresult.NodeContainerExecutionStatus;
+import org.knime.core.streaming.inoutput.InMemoryRowCache;
+import org.knime.core.streaming.inoutput.InMemoryRowInput;
+import org.knime.core.streaming.inoutput.InMemoryRowOutput;
+import org.knime.core.util.Pair;
+import org.knime.core.util.ThreadUtils;
 
 /**
  *
@@ -81,7 +98,54 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         if (!(nodeContainer instanceof SubNodeContainer)) {
             return NodeContainerExecutionStatus.FAILURE;
         }
-        SubNodeContainer snc = (SubNodeContainer)nodeContainer;
+        WorkflowManager wfm = ((SubNodeContainer)nodeContainer).getWorkflowManager();
+        HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches
+            = new LinkedHashMap<Pair<NodeID, Integer>, InMemoryRowCache>();
+        for (NodeContainer nc : wfm.getNodeContainers()) {
+            if (!(nodeContainer instanceof NativeNodeContainer)) {
+                return NodeContainerExecutionStatus.FAILURE;
+            }
+            for (int op = 0; op < nc.getNrOutPorts(); op++) {
+                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
+                DataTableSpec spec = (DataTableSpec)(nc.getOutPort(op).getPortObjectSpec());
+                connectionCaches.put(new Pair<NodeID, Integer>(nc.getID(), op), new InMemoryRowCache(ccs.size(), spec));
+            }
+        }
+        for (NodeContainer nc : wfm.getNodeContainers()) {
+            final NativeNodeContainer nnc = (NativeNodeContainer)nc;
+            // collect incoming caches
+            final InMemoryRowInput[]  inCaches = new InMemoryRowInput[nnc.getNrInPorts()];
+            for (int i = 0; i < inCaches.length; i++) {
+                ConnectionContainer cc = wfm.getIncomingConnectionFor(nnc.getID(), i);
+                if (cc == null) {
+                    return NodeContainerExecutionStatus.FAILURE;
+                }
+                InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(cc.getSource(), cc.getSourcePort()));
+                inCaches[i] = imrc.createRowInput();
+            }
+            // collect outgoing caches
+            final InMemoryRowOutput[]  outCaches = new InMemoryRowOutput[nnc.getNrOutPorts()];
+            for (int o = 0; o < outCaches.length; o++) {
+                InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(nnc.getID(), o));
+                outCaches[o] = imrc.createRowOutput();
+            }
+            // initiate actual work
+            try {
+                PortObjectSpec specs[] = new PortObjectSpec[nnc.getNrOutPorts()];
+                for (int o = 0; o < nnc.getNrOutPorts(); o++) {
+                    specs[o] = nnc.getOutPort(o).getPortObjectSpec();
+                }
+                final StreamableOperator strop = nnc.getNodeModel().createStreamableOperator(
+                    new PartitionInfo(0, 1), specs);
+                ThreadUtils.threadWithContext(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            strop.runFinal(inCaches, outCaches, nnc.createExecutionContext());
+                        } catch (Exception e) {};
+                    }
+                }, "Mein Thread").start();
+            } catch (Exception e) {};        }
         return null;
     }
 
