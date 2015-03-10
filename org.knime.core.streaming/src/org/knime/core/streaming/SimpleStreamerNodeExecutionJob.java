@@ -133,8 +133,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             }
             // initiate actual work
             try {
-                PortObjectSpec[] inSpecs = new PortObjectSpec[nnc.getNrInPorts()];
-                wfm.assembleInputSpecs(nnc.getID(), inSpecs);
+                PortObjectSpec[] inSpecs = wfm.getNodeInputSpecs(nnc.getID());
                 inSpecs = ArrayUtils.remove(inSpecs, 0);
                 final StreamableOperator strop = nnc.getNodeModel().createStreamableOperator(
                     new PartitionInfo(0, 1), inSpecs);
