@@ -3,5 +3,8 @@
 <plugin>
    <extension
          point="org.knime.core.NodeExecutionJobManagerFactory">
+      <NodeExecutionJobManagerFactory
+            JobManagerFactory="org.knime.core.streaming.SimpleStreamerNodeExecutionJobManagerFactory">
+      </NodeExecutionJobManagerFactory>
    </extension>
 </plugin>
