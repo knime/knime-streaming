@@ -57,6 +57,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.util.CheckUtils;
+import org.knime.core.node.workflow.ConnectionContainer;
 
 /**
  * A cache that gets filled by a producer node (upstream) and that is consumed by multiple (0-n) consumer nodes
@@ -88,8 +89,8 @@ public final class InMemoryRowCache {
         m_requireConsumeCondition = m_lock.newCondition();
     }
 
-    public InMemoryRowInput createRowInput() {
-        return new InMemoryRowInput(m_spec, this);
+    public InMemoryRowInput createRowInput(final ConnectionContainer cc) {
+        return new InMemoryRowInput(cc, m_spec, this);
     }
 
     public InMemoryRowOutput createRowOutput() {

@@ -53,6 +53,9 @@ import java.util.List;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.streamable.RowInput;
+import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.ConnectionProgress;
+import org.knime.core.node.workflow.ConnectionProgressEvent;
 
 /**
  *
@@ -61,16 +64,20 @@ import org.knime.core.node.streamable.RowInput;
 public final class InMemoryRowInput extends RowInput {
 
     private final InMemoryRowCache m_rowCache;
+    private final ConnectionContainer m_connection;
     private final DataTableSpec m_spec;
     private List<DataRow> m_currentChunk;
     private int m_iteratorIndex;
+    private long m_currentRowCount;
 
     /**
      *
      */
-    InMemoryRowInput(final DataTableSpec spec, final InMemoryRowCache rowCache) {
+    InMemoryRowInput(final ConnectionContainer cc, final DataTableSpec spec, final InMemoryRowCache rowCache) {
+        m_connection = cc;
         m_spec = spec;
         m_rowCache = rowCache;
+        m_currentRowCount = 0;
     }
 
     /** {@inheritDoc} */
@@ -89,6 +96,9 @@ public final class InMemoryRowInput extends RowInput {
         if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
             return null;
         }
+        m_currentRowCount += m_currentChunk.size();
+        m_connection.progressChanged(new ConnectionProgressEvent(m_connection,
+            new ConnectionProgress(true, "" + m_currentRowCount)));
         return m_currentChunk.get(m_iteratorIndex++);
     }
 

@@ -166,7 +166,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                     return NodeContainerExecutionStatus.FAILURE;
                 }
                 InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(cc.getSource(), cc.getSourcePort() - 1));
-                inCaches[i] = imrc.createRowInput();
+                inCaches[i] = imrc.createRowInput(cc);
             }
             // collect outgoing caches
             final InMemoryRowOutput[]  outCaches = new InMemoryRowOutput[nnc.getNrOutPorts() - 1];
