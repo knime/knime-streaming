@@ -53,6 +53,7 @@ import java.net.URL;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.workflow.AbstractNodeExecutionJobManager;
 import org.knime.core.node.workflow.NodeContainer;
+import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
 
 /**
@@ -65,8 +66,19 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     /** {@inheritDoc} */
     @Override
     public NodeExecutionJob submitJob(final NodeContainer nc, final PortObject[] data) {
-        SimpleStreamerNodeExecutionJob job = new SimpleStreamerNodeExecutionJob(nc, data);
-        job.run();
+        final SimpleStreamerNodeExecutionJob job = new SimpleStreamerNodeExecutionJob(nc, data);
+        SimpleStreamerNodeExecutionJob.STREAMING_EXECUTOR_SERVICE.execute(new Runnable() {
+            @Override
+            public void run() {
+                NodeContext.pushContext(nc);
+                try {
+                    SimpleStreamerNodeExecutionJob.updateThreadName("Master");
+                    job.run();
+                } finally {
+                    NodeContext.removeLastContext();
+                }
+            }
+        });
         return job;
     }
 
