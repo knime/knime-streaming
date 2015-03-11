@@ -96,7 +96,7 @@ public final class InMemoryRowInput extends RowInput {
         if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
             return null;
         }
-        m_currentRowCount += m_currentChunk.size();
+        m_currentRowCount += 1;
         m_connection.progressChanged(new ConnectionProgressEvent(m_connection,
             new ConnectionProgress(true, "" + m_currentRowCount)));
         return m_currentChunk.get(m_iteratorIndex++);
