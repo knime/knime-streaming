@@ -78,7 +78,7 @@ public final class InMemoryRowOutput extends RowOutput {
         m_rows.add(row);
         if (m_rows.size() == CHUNK_SIZE) {
             m_rowCache.addChunk(m_rows, false);
-            m_rows = new ArrayList<DataRow>(CHUNK_SIZE);
+            m_rows = new ArrayList<>(CHUNK_SIZE);
         }
     }
 

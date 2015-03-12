@@ -98,8 +98,14 @@ public final class InMemoryRowCache {
     }
 
     public void addChunk(final List<DataRow> rows, final boolean isLast) throws InterruptedException {
-        CheckUtils.checkState(!m_isLast, "Previous chunk was already the last one");
         CheckUtils.checkNotNull(rows, "Rows argument must not be null");
+        // implication m_isLast --> isLast ---- can't reopen
+        CheckUtils.checkState(!m_isLast || isLast, "Cannot re-open row cache - isLast flag was set previously");
+        // subsequent calls with isLast==true are allowed if no rows are added
+        CheckUtils.checkState(!m_isLast || rows.isEmpty(), "Previous chunk was last one - can't add new rows");
+        if (m_isLast) {
+            return;
+        }
         m_lock.lockInterruptibly();
         try {
             while (m_currentChunk != null && m_consumers.size() < m_nrConsumers) {

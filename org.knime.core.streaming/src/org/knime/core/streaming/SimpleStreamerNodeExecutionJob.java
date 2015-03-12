@@ -64,6 +64,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.NodeLogger;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
@@ -113,6 +114,9 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         }
     });
 
+    /** The thread performing {@link #mainExecute()} - will be interrupted when canceled. */
+    private Thread m_mainThread;
+
     /**
      * @param nc
      * @param data
@@ -130,6 +134,15 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     /** {@inheritDoc} */
     @Override
     protected NodeContainerExecutionStatus mainExecute() {
+        m_mainThread = Thread.currentThread();
+        try {
+            return mainExecuteInternal();
+        } finally {
+            m_mainThread = null;
+        }
+    }
+
+    private NodeContainerExecutionStatus mainExecuteInternal() {
         NodeContainer nodeContainer = getNodeContainer();
         if (!(nodeContainer instanceof SubNodeContainer)) {
             String message = "Streaming exeuction only available for subnodes";
@@ -184,10 +197,22 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                     try {
                         final StreamableOperator strop = nnc.getNodeModel().createStreamableOperator(
                             new PartitionInfo(0, 1), inSpecs);
-                        strop.runFinal(inCaches, outCaches, nnc.createExecutionContext());
+                        ExecutionContext exec = nnc.createExecutionContext();
+                        nnc.getNode().openFileStoreHandler(exec);
+                        strop.runFinal(inCaches, outCaches, exec.createSubExecutionContext(0.0));
                         return null;
                     } finally {
                         NodeContext.removeLastContext();
+                        for (InMemoryRowInput input : inCaches) {
+                            input.close();
+                        }
+                        for (InMemoryRowOutput output : outCaches) {
+                            try {
+                                output.close();
+                            } catch (Exception e) {
+                                LOGGER.error("Failed to close output: " + e.getMessage(), e);
+                            }
+                        }
                     }
                 }
             });
@@ -198,25 +223,24 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(nodeContainer.getID());
         for (Pair<NodeContainer, Future<Void>> nodeFuture : nodeThreadList) {
             NodeContainer innerNC = nodeFuture.getFirst();
+            Future<Void> future = nodeFuture.getSecond();
             SingleNodeContainerExecutionResult innerExecResult = new SingleNodeContainerExecutionResult();
             try {
-                nodeFuture.getSecond().get();
+                future.get();
                 innerExecResult.setSuccess(true);
             } catch (Exception e) {
                 success = false;
                 innerExecResult.setSuccess(false);
-                LOGGER.error("Streaming thread to " + innerNC.getNameWithID() + " failed: " + e.getMessage(), e);
+                if (e instanceof InterruptedException) {
+                    future.cancel(true);
+                } else {
+                    LOGGER.error("Streaming thread to " + innerNC.getNameWithID() + " failed: " + e.getMessage(), e);
+                }
             }
             execResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
         }
         execResult.setSuccess(success);
         return execResult;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    protected void afterExecute(final NodeContainerExecutionStatus status) {
-        SubNodeContainer nc = (SubNodeContainer)getNodeContainer();
     }
 
     static void updateThreadName(final String nameSuffix) {
@@ -228,6 +252,11 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     /** {@inheritDoc} */
     @Override
     protected boolean cancel() {
+        Thread mainThread = m_mainThread;
+        if (mainThread != null) {
+            mainThread.interrupt();
+            return true;
+        }
         return false;
     }
 
