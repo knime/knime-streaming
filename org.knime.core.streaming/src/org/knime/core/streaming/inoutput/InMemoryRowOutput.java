@@ -49,6 +49,7 @@
 package org.knime.core.streaming.inoutput;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.knime.core.data.DataRow;
@@ -87,6 +88,7 @@ public final class InMemoryRowOutput extends RowOutput {
     public void close() {
         try {
             m_rowCache.addChunk(m_rows, true);
+            m_rows = Collections.emptyList();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

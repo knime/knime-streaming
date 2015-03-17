@@ -50,8 +50,12 @@ package org.knime.core.streaming;
 
 import java.net.URL;
 
+import org.knime.core.node.NodeModel;
 import org.knime.core.node.port.PortObject;
+import org.knime.core.node.port.PortObjectSpec;
+import org.knime.core.node.streamable.PartitionInfo;
 import org.knime.core.node.workflow.AbstractNodeExecutionJobManager;
+import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContainer;
 import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
@@ -62,6 +66,12 @@ import org.knime.core.node.workflow.NodeExecutionJob;
  * @author Michael Berthold, KNIME.com, Zurich, Switzerland
  */
 public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecutionJobManager {
+
+    private static final URL STREAMING_GREEN =
+            SimpleStreamerNodeExecutionJobManager.class.getResource("icons/streaming_green.png");
+
+    private static final URL STREAMING_RED =
+            SimpleStreamerNodeExecutionJobManager.class.getResource("icons/streaming_red.png");
 
     /** {@inheritDoc} */
     @Override
@@ -96,8 +106,46 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
 
     /** {@inheritDoc} */
     @Override
+    // Determines the decorating icon for a native node. Green = natively streams; Red = not streaming.
     public URL getIconForChild(final NodeContainer child) {
-        return getIcon();
+        if (child instanceof NativeNodeContainer ) {
+            NativeNodeContainer nnc = (NativeNodeContainer)child;
+            NodeModel model = nnc.getNodeModel();
+            Class<?> cl = model.getClass();
+            do {
+                try {
+                    cl.getDeclaredMethod("getInputPortRoles");
+                    return STREAMING_GREEN;
+                } catch (Exception e) {
+                    // ignore, check superclass
+                }
+                try {
+                    cl.getDeclaredMethod("getOutputPortRoles");
+                    return STREAMING_GREEN;
+                } catch (Exception e) {
+                    // ignore, check superclass
+                }
+                try {
+                    cl.getDeclaredMethod("createStreamableOperator", PartitionInfo.class, PortObjectSpec[].class);
+                    return STREAMING_GREEN;
+                } catch (Exception e) {
+                    // ignore, check superclass
+                }
+                cl = cl.getSuperclass();
+            } while (!NodeModel.class.equals(cl));
+
+            // // force streaming is indicated by setting the same job manager again.
+            // // this will change (we will have a separate job manager), but not
+            // // until after KNIME 2.7 is out, at which point we will have our own implementation
+            // // of AbstractNodeExecutionJobManager
+            // NodeExecutionJobManager childJobMgr = child.getJobManager();
+            // if (childJobMgr != null && childJobMgr.getClass().getSimpleName().equals("KRunnerJobManager") ) {
+            //      return STREAMING_RED;
+            // }
+            return STREAMING_RED;
+        } else {
+            return STREAMING_RED;
+        }
     }
 
     /** {@inheritDoc} */

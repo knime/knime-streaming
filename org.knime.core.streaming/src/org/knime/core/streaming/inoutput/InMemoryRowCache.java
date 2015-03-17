@@ -48,12 +48,12 @@
  */
 package org.knime.core.streaming.inoutput;
 
-import java.util.HashSet;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.util.CheckUtils;
@@ -68,13 +68,13 @@ import org.knime.core.node.workflow.ConnectionContainer;
  */
 public final class InMemoryRowCache {
 
-    private final int m_nrConsumers;
-    private List<DataRow> m_currentChunk;
-    private final Set<InMemoryRowInput> m_consumers;
+    private int m_nrConsumersCreated;
+    private final boolean[] m_consumersConsumedFlags;
     private final ReentrantLock m_lock;
     private final Condition m_acceptProduceCondition;
     private final Condition m_requireConsumeCondition;
     private final DataTableSpec m_spec;
+    private List<DataRow> m_currentChunk;
     private boolean m_isLast;
 
     /** New cache based on a number of consumers.
@@ -82,18 +82,26 @@ public final class InMemoryRowCache {
     public InMemoryRowCache(final int nrConsumers, final DataTableSpec spec) {
         m_spec = spec;
         CheckUtils.checkArgument(nrConsumers >= 0, "Consumer count not >= 0: " + nrConsumers);
-        m_consumers = new HashSet<>();
-        m_nrConsumers = nrConsumers;
+        m_consumersConsumedFlags = new boolean[nrConsumers];
         m_lock = new ReentrantLock();
         m_acceptProduceCondition = m_lock.newCondition();
         m_requireConsumeCondition = m_lock.newCondition();
     }
 
     public InMemoryRowInput createRowInput(final ConnectionContainer cc) {
-        return new InMemoryRowInput(cc, m_spec, this);
+        checkNotInUse();
+        CheckUtils.checkState(m_nrConsumersCreated < m_consumersConsumedFlags.length, "Too many inputs created; max "
+            + "allowed %d but this is index %d", m_consumersConsumedFlags.length, m_nrConsumersCreated);
+        return new InMemoryRowInput(m_nrConsumersCreated++, cc, m_spec, this);
+    }
+
+    private void checkNotInUse() {
+        CheckUtils.checkState(m_currentChunk == null && !m_isLast,
+                "Can't create input/output wrapper as the cache is already in use");
     }
 
     public InMemoryRowOutput createRowOutput() {
+        checkNotInUse();
         return new InMemoryRowOutput(this);
     }
 
@@ -103,15 +111,15 @@ public final class InMemoryRowCache {
         CheckUtils.checkState(!m_isLast || isLast, "Cannot re-open row cache - isLast flag was set previously");
         // subsequent calls with isLast==true are allowed if no rows are added
         CheckUtils.checkState(!m_isLast || rows.isEmpty(), "Previous chunk was last one - can't add new rows");
-        if (m_isLast) {
-            return;
-        }
         m_lock.lockInterruptibly();
         try {
-            while (m_currentChunk != null && m_consumers.size() < m_nrConsumers) {
+            if (m_isLast) {
+                return;
+            }
+            while (m_currentChunk != null && ArrayUtils.contains(m_consumersConsumedFlags, false)) {
                 m_acceptProduceCondition.await();
             }
-            m_consumers.clear();
+            Arrays.fill(m_consumersConsumedFlags, false);
             m_currentChunk = rows;
             m_isLast = isLast;
             m_requireConsumeCondition.signalAll();
@@ -130,11 +138,12 @@ public final class InMemoryRowCache {
                     m_requireConsumeCondition.await();
                 }
             }
-            while (!m_consumers.add(consumer)) {
+            while (m_consumersConsumedFlags[consumer.getRowInputID()]) {
                 m_requireConsumeCondition.await();
             }
+            m_consumersConsumedFlags[consumer.getRowInputID()] = true;
             final List<DataRow> currentChunk = m_currentChunk;
-            if (m_consumers.size() == m_nrConsumers) {
+            if (!ArrayUtils.contains(m_consumersConsumedFlags, false)) {
                 m_acceptProduceCondition.signalAll();
                 if (m_isLast) {
                     m_currentChunk = null;

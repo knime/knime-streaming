@@ -48,6 +48,7 @@
  */
 package org.knime.core.streaming.inoutput;
 
+import java.text.NumberFormat;
 import java.util.List;
 
 import org.knime.core.data.DataRow;
@@ -63,6 +64,7 @@ import org.knime.core.node.workflow.ConnectionProgressEvent;
  */
 public final class InMemoryRowInput extends RowInput {
 
+    private final int m_rowInputID;
     private final InMemoryRowCache m_rowCache;
     private final ConnectionContainer m_connection;
     private final DataTableSpec m_spec;
@@ -70,14 +72,20 @@ public final class InMemoryRowInput extends RowInput {
     private int m_iteratorIndex;
     private long m_currentRowCount;
 
-    /**
-     *
-     */
-    InMemoryRowInput(final ConnectionContainer cc, final DataTableSpec spec, final InMemoryRowCache rowCache) {
+    private static final NumberFormat FORMAT = NumberFormat.getIntegerInstance();
+
+    InMemoryRowInput(final int rowInputID, final ConnectionContainer cc,
+        final DataTableSpec spec, final InMemoryRowCache rowCache) {
+        m_rowInputID = rowInputID;
         m_connection = cc;
         m_spec = spec;
         m_rowCache = rowCache;
-        m_currentRowCount = 0;
+        fireProgressEvent(false, 0);
+    }
+
+    /** @return the rowInputID */
+    int getRowInputID() {
+        return m_rowInputID;
     }
 
     /** {@inheritDoc} */
@@ -96,16 +104,19 @@ public final class InMemoryRowInput extends RowInput {
         if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
             return null;
         }
-        m_currentRowCount += 1;
-        m_connection.progressChanged(new ConnectionProgressEvent(m_connection,
-            new ConnectionProgress(true, "" + m_currentRowCount)));
+        fireProgressEvent(true, m_currentRowCount++);
         return m_currentChunk.get(m_iteratorIndex++);
+    }
+
+    private void fireProgressEvent(final boolean isInProgress, final long currentRow) {
+        m_connection.progressChanged(new ConnectionProgressEvent(m_connection,
+            new ConnectionProgress(isInProgress, FORMAT.format(currentRow))));
     }
 
     /** {@inheritDoc} */
     @Override
     public void close() {
-
+        fireProgressEvent(false, m_currentRowCount);
     }
 
 }

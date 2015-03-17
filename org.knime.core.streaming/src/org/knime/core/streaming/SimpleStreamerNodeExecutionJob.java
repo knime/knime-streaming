@@ -56,6 +56,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -70,6 +73,7 @@ import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.PartitionInfo;
 import org.knime.core.node.streamable.StreamableOperator;
+import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContainer;
@@ -103,9 +107,8 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         }
     };
 
-    static final ExecutorService STREAMING_EXECUTOR_SERVICE = Executors.newCachedThreadPool(
-        new ThreadFactory() {
-            private final AtomicInteger THREAD_ID = new AtomicInteger();
+    static final ExecutorService STREAMING_EXECUTOR_SERVICE = Executors.newCachedThreadPool(new ThreadFactory() {
+            final AtomicInteger THREAD_ID = new AtomicInteger();
         @Override
         public Thread newThread(final Runnable r) {
             Thread t = new Thread(r, "Streaming-" + THREAD_ID.getAndIncrement());
@@ -150,25 +153,94 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             LOGGER.error(message);
             return NodeContainerExecutionStatus.FAILURE;
         }
-        WorkflowManager wfm = ((SubNodeContainer)nodeContainer).getWorkflowManager();
-        HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches
-            = new LinkedHashMap<Pair<NodeID, Integer>, InMemoryRowCache>();
+        SubNodeContainer subnodeContainer = (SubNodeContainer)nodeContainer;
+        WorkflowManager wfm = subnodeContainer.getWorkflowManager();
         Collection<NodeContainer> allNodeContainers = wfm.getNodeContainers();
-        for (NodeContainer nc : allNodeContainers) {
-            if (!(nc instanceof NativeNodeContainer)) {
-                String message = "Subnodes must only contain native nodes in order to be streamed: "
-                        + nc.getNameWithID();
-                nodeContainer.setNodeMessage(new NodeMessage(Type.ERROR, message));
-                LOGGER.error(message);
-                return NodeContainerExecutionStatus.FAILURE;
-            }
-            for (int op = 0; op < nc.getNrOutPorts() - 1; op++) {
-                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op + 1);
-                DataTableSpec spec = (DataTableSpec)(nc.getOutPort(op + 1).getPortObjectSpec());
-                connectionCaches.put(new Pair<NodeID, Integer>(nc.getID(), op), new InMemoryRowCache(ccs.size(), spec));
-            }
+        HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches;
+        try {
+            connectionCaches = prepareConnectionCaches(nodeContainer, wfm, allNodeContainers);
+        } catch (WrappedNodeExecutionStatusException e1) {
+            return e1.getStatus();
         }
         List<Pair<NodeContainer, Future<Void>>> nodeThreadList = new ArrayList<>(allNodeContainers.size());
+        ExecutorCompletionService<Void> completionService =
+                new ExecutorCompletionService<Void>(STREAMING_EXECUTOR_SERVICE);
+        try {
+            submitJobs(wfm, allNodeContainers, connectionCaches, nodeThreadList, completionService);
+        } catch (WrappedNodeExecutionStatusException e1) {
+            return e1.getStatus();
+        }
+
+        boolean success = true;
+        SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(nodeContainer.getID());
+        String failMessage = null;
+        boolean isFailed = false;
+        boolean isCanceled = false;
+
+        for (int i = 0; i < nodeThreadList.size(); i++) {
+            try {
+                completionService.take().get();
+            } catch (InterruptedException | ExecutionException e) {
+                // error handling done below
+                if (e instanceof InterruptedException) {
+                    isCanceled = true;
+                } else {
+                    isFailed = true;
+                }
+                break;
+            }
+        }
+
+        for (Pair<NodeContainer, Future<Void>> nodeFuture : nodeThreadList) {
+            NodeContainer innerNC = nodeFuture.getFirst();
+            Future<Void> future = nodeFuture.getSecond();
+            SingleNodeContainerExecutionResult innerExecResult = new SingleNodeContainerExecutionResult();
+            if ((isFailed || isCanceled) && !future.isDone()) {
+                future.cancel(true);
+                // assert future.isDone() -- according to API
+            }
+            try {
+                future.get();
+                innerExecResult.setSuccess(true);
+            } catch (InterruptedException | CancellationException e) {
+                assert !(e instanceof InterruptedException) : "InterruptedException not expected as future is canceled";
+                success = false;
+                innerExecResult.setSuccess(false);
+            } catch (ExecutionException e) {
+                isFailed = true;
+                failMessage = innerNC.getNameWithID() + " failed: " + e.getMessage();
+                success = false;
+                innerExecResult.setSuccess(false);
+                innerExecResult.setMessage(new NodeMessage(Type.ERROR, e.getMessage()));
+                LOGGER.error("Streaming thread to " + innerNC.getNameWithID()
+                    + " failed: " + e.getMessage(), e);
+            }
+            execResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
+        }
+        NodeMessage message = NodeMessage.NONE;
+        if (isCanceled) {
+            message = new NodeMessage(Type.WARNING, "Execution canceled");
+        } else if (isFailed) {
+            message = new NodeMessage(Type.ERROR, failMessage);
+        }
+        execResult.setSuccess(success);
+        execResult.setMessage(message);
+        subnodeContainer.setNodeMessage(message);
+        return execResult;
+    }
+
+    /**
+     * @param wfm
+     * @param allNodeContainers
+     * @param connectionCaches
+     * @param nodeThreadList
+     * @param completionService
+     */
+    private void submitJobs(final WorkflowManager wfm, final Collection<NodeContainer> allNodeContainers,
+        final HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches,
+        final List<Pair<NodeContainer, Future<Void>>> nodeThreadList,
+        final ExecutorCompletionService<Void> completionService)
+                throws WrappedNodeExecutionStatusException {
         for (NodeContainer nc : allNodeContainers) {
             final NativeNodeContainer nnc = (NativeNodeContainer)nc;
             // collect incoming caches
@@ -176,20 +248,20 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             for (int i = 0; i < inCaches.length; i++) {
                 ConnectionContainer cc = wfm.getIncomingConnectionFor(nnc.getID(), i + 1);
                 if (cc == null) {
-                    return NodeContainerExecutionStatus.FAILURE;
+                    throw new WrappedNodeExecutionStatusException(NodeContainerExecutionStatus.FAILURE);
                 }
-                InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(cc.getSource(), cc.getSourcePort() - 1));
+                InMemoryRowCache imrc = connectionCaches.get(Pair.create(cc.getSource(), cc.getSourcePort() - 1));
                 inCaches[i] = imrc.createRowInput(cc);
             }
             // collect outgoing caches
             final InMemoryRowOutput[]  outCaches = new InMemoryRowOutput[nnc.getNrOutPorts() - 1];
             for (int o = 0; o < outCaches.length; o++) {
-                InMemoryRowCache imrc = connectionCaches.get(new Pair<NodeID, Integer>(nnc.getID(), o));
+                InMemoryRowCache imrc = connectionCaches.get(Pair.create(nnc.getID(), o));
                 outCaches[o] = imrc.createRowOutput();
             }
 
             final PortObjectSpec[] inSpecs = ArrayUtils.remove(wfm.getNodeInputSpecs(nnc.getID()), 0);
-            Future<Void> future = STREAMING_EXECUTOR_SERVICE.submit(new Callable<Void>() {
+            Future<Void> future = completionService.submit(new Callable<Void>() {
                 @Override
                 public Void call() throws Exception {
                     updateThreadName(nnc.getNameWithID());
@@ -218,34 +290,39 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             });
             nodeThreadList.add(Pair.create((NodeContainer)nnc, future));
         }
+    }
 
-        boolean success = true;
-        SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(nodeContainer.getID());
-        for (Pair<NodeContainer, Future<Void>> nodeFuture : nodeThreadList) {
-            NodeContainer innerNC = nodeFuture.getFirst();
-            Future<Void> future = nodeFuture.getSecond();
-            SingleNodeContainerExecutionResult innerExecResult = new SingleNodeContainerExecutionResult();
-            try {
-                future.get();
-                innerExecResult.setSuccess(true);
-            } catch (Exception e) {
-                success = false;
-                innerExecResult.setSuccess(false);
-                if (e instanceof InterruptedException) {
-                    future.cancel(true);
-                } else {
-                    LOGGER.error("Streaming thread to " + innerNC.getNameWithID() + " failed: " + e.getMessage(), e);
-                }
+    /**
+     * @param nodeContainer
+     * @param wfm
+     * @param allNodeContainers
+     * @return
+     */
+    private HashMap<Pair<NodeID, Integer>, InMemoryRowCache> prepareConnectionCaches(final NodeContainer nodeContainer,
+        final WorkflowManager wfm, final Collection<NodeContainer> allNodeContainers)
+                throws WrappedNodeExecutionStatusException {
+        HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches
+            = new LinkedHashMap<Pair<NodeID, Integer>, InMemoryRowCache>();
+        for (NodeContainer nc : allNodeContainers) {
+            if (!(nc instanceof NativeNodeContainer)) {
+                String message = "Subnodes must only contain native nodes in order to be streamed: "
+                        + nc.getNameWithID();
+                nodeContainer.setNodeMessage(new NodeMessage(Type.ERROR, message));
+                LOGGER.error(message);
+                throw new WrappedNodeExecutionStatusException(NodeContainerExecutionStatus.FAILURE);
             }
-            execResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
+            for (int op = 0; op < nc.getNrOutPorts() - 1; op++) {
+                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op + 1);
+                DataTableSpec spec = (DataTableSpec)(nc.getOutPort(op + 1).getPortObjectSpec());
+                connectionCaches.put(Pair.create(nc.getID(), op), new InMemoryRowCache(ccs.size(), spec));
+            }
         }
-        execResult.setSuccess(success);
-        return execResult;
+        return connectionCaches;
     }
 
     static void updateThreadName(final String nameSuffix) {
         String name = Thread.currentThread().getName();
-        name = name.replaceAll("^(Streaming-\\d+).*", "$0-" + nameSuffix);
+        name = name.replaceAll("^(Streaming-\\d+).*", "$1-" + nameSuffix);
         Thread.currentThread().setName(name);
     }
 
@@ -258,6 +335,20 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             return true;
         }
         return false;
+    }
+
+    static final class WrappedNodeExecutionStatusException extends Exception {
+
+        private final NodeContainerExecutionStatus m_status;
+
+        WrappedNodeExecutionStatusException(final NodeContainerExecutionStatus status) {
+            m_status = CheckUtils.checkArgumentNotNull(status, "Arg must not be null");
+        }
+
+        /** @return the status */
+        public NodeContainerExecutionStatus getStatus() {
+            return m_status;
+        }
     }
 
 }
