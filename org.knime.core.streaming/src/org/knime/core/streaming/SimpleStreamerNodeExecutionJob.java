@@ -87,6 +87,7 @@ import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.execresult.NodeContainerExecutionStatus;
 import org.knime.core.node.workflow.execresult.SingleNodeContainerExecutionResult;
 import org.knime.core.node.workflow.execresult.SubnodeContainerExecutionResult;
+import org.knime.core.node.workflow.execresult.WorkflowExecutionResult;
 import org.knime.core.streaming.inoutput.InMemoryRowCache;
 import org.knime.core.streaming.inoutput.InMemoryRowInput;
 import org.knime.core.streaming.inoutput.InMemoryRowOutput;
@@ -171,8 +172,6 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             return e1.getStatus();
         }
 
-        boolean success = true;
-        SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(nodeContainer.getID());
         String failMessage = null;
         boolean isFailed = false;
         boolean isCanceled = false;
@@ -191,6 +190,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             }
         }
 
+        WorkflowExecutionResult wfmExecResult = new WorkflowExecutionResult(wfm.getID());
         for (Pair<NodeContainer, Future<Void>> nodeFuture : nodeThreadList) {
             NodeContainer innerNC = nodeFuture.getFirst();
             Future<Void> future = nodeFuture.getSecond();
@@ -201,27 +201,32 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             }
             try {
                 future.get();
-                innerExecResult.setSuccess(true);
+                innerExecResult.setSuccess(!(isFailed || isCanceled));
             } catch (InterruptedException | CancellationException e) {
                 assert !(e instanceof InterruptedException) : "InterruptedException not expected as future is canceled";
-                success = false;
+                isCanceled = true;
                 innerExecResult.setSuccess(false);
             } catch (ExecutionException e) {
                 isFailed = true;
                 failMessage = innerNC.getNameWithID() + " failed: " + e.getMessage();
-                success = false;
                 innerExecResult.setSuccess(false);
-                innerExecResult.setMessage(new NodeMessage(Type.ERROR, e.getMessage()));
-                LOGGER.error("Streaming thread to " + innerNC.getNameWithID()
-                    + " failed: " + e.getMessage(), e);
+                NodeMessage innerMessage = new NodeMessage(Type.ERROR, e.getMessage());
+                innerNC.setNodeMessage(innerMessage);
+                innerExecResult.setMessage(innerMessage);
+                LOGGER.error("Streaming thread to " + innerNC.getNameWithID() + " failed: " + e.getMessage(), e);
             }
-            execResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
+            wfmExecResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
         }
+        final boolean success = !(isFailed || isCanceled);
+        wfmExecResult.setSuccess(success);
+        SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(subnodeContainer.getID());
+        execResult.setWorkflowExecutionResult(wfmExecResult);
+
         NodeMessage message = NodeMessage.NONE;
-        if (isCanceled) {
-            message = new NodeMessage(Type.WARNING, "Execution canceled");
-        } else if (isFailed) {
-            message = new NodeMessage(Type.ERROR, failMessage);
+        if (isFailed) {
+            message = NodeMessage.newError(failMessage);
+        } else if (isCanceled) {
+            message = NodeMessage.newWarning("Execution canceled");
         }
         execResult.setSuccess(success);
         execResult.setMessage(message);
@@ -345,7 +350,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             m_status = CheckUtils.checkArgumentNotNull(status, "Arg must not be null");
         }
 
-        /** @return the status */
+        /** @return the status (non-null) */
         public NodeContainerExecutionStatus getStatus() {
             return m_status;
         }
