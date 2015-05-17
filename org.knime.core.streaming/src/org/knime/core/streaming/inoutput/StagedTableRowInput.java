@@ -44,74 +44,51 @@
  * ---------------------------------------------------------------------
  *
  * History
- *   Mar 10, 2015 (wiswedel): created
+ *   May 15, 2015 (wiswedel): created
  */
 package org.knime.core.streaming.inoutput;
 
-import java.util.List;
-
 import org.knime.core.data.DataRow;
-import org.knime.core.data.DataTableSpec;
-import org.knime.core.node.streamable.RowInput;
+import org.knime.core.data.DataTable;
+import org.knime.core.node.streamable.DataTableRowInput;
+import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 
 /**
- * {@link RowInput} passed to streaming nodes. It reads from {@link InMemoryRowCache}.
+ * Extension of {@link DataTableRowInput} that also sends UI events into the {@link ConnectionContainer}
+ * (marching ants).
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
-public final class InMemoryRowInput extends RowInput {
+public final class StagedTableRowInput extends DataTableRowInput {
 
-    private final int m_consumerID;
-    private final InMemoryRowCache m_rowCache;
-    private final ConnectionContainer m_connection;
-    private List<DataRow> m_currentChunk;
-    private int m_iteratorIndex;
-    private long m_currentRowCount;
+    private ConnectionContainer m_cc;
 
-    InMemoryRowInput(final int consumerID, final ConnectionContainer cc, final InMemoryRowCache rowCache) {
-        m_consumerID = consumerID;
-        m_connection = cc;
-        m_rowCache = rowCache;
-        InMemoryRowCache.fireProgressEvent(m_connection, false, 0);
-    }
+    private long m_counter;
 
-    /** @return the consumerID */
-    int getConsumerID() {
-        return m_consumerID;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public DataTableSpec getDataTableSpec() {
-        try {
-            return m_rowCache.getPortObjectSpec();
-        } catch (InterruptedException e) {
-            assert false : "Spec was supposed to be available already at construction time";
-            throw new RuntimeException(e);
-        }
+    /** Inits input.
+     * @param table The table to read from.
+     * @param cc The connection to send events to (only for display in the UI).
+     */
+    StagedTableRowInput(final DataTable table, final ConnectionContainer cc) {
+        super(table);
+        m_cc = CheckUtils.checkArgumentNotNull(cc, "Arg must not be null");
     }
 
     /** {@inheritDoc} */
     @Override
     public DataRow poll() throws InterruptedException {
-        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
-            m_currentChunk = m_rowCache.getChunk(this);
-            m_iteratorIndex = 0;
-        }
-        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
-            InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
-            return null;
-        } else {
-            InMemoryRowCache.fireProgressEvent(m_connection, true, m_currentRowCount++);
-            return m_currentChunk.get(m_iteratorIndex++);
-        }
+        final DataRow next = super.poll();
+        long count = next == null ? m_counter : ++m_counter;
+        InMemoryRowCache.fireProgressEvent(m_cc, next != null, count);
+        return next;
     }
 
     /** {@inheritDoc} */
     @Override
     public void close() {
-        InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
+        InMemoryRowCache.fireProgressEvent(m_cc, false, m_counter);
+        super.close();
     }
 
 }

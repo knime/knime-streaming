@@ -53,34 +53,39 @@ import java.util.Collections;
 import java.util.List;
 
 import org.knime.core.data.DataRow;
+import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.streamable.RowOutput;
 
 /**
+ * {@link RowOutput} for table ports. It passes the data into a {@link InMemoryRowCache}, which does all the
+ * synchronization and sends it off to downstream nodes.
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
 public final class InMemoryRowOutput extends RowOutput {
 
-    private static final int CHUNK_SIZE = 50;
     private final InMemoryRowCache m_rowCache;
     private List<DataRow> m_rows;
 
-    /**
-     *
-     */
     InMemoryRowOutput(final InMemoryRowCache rowCache) {
         m_rowCache = rowCache;
-        m_rows = new ArrayList<DataRow>(CHUNK_SIZE);
+        m_rows = new ArrayList<DataRow>(InMemoryRowCache.CHUNK_SIZE);
     }
 
     /** {@inheritDoc} */
     @Override
     public void push(final DataRow row) throws InterruptedException {
         m_rows.add(row);
-        if (m_rows.size() == CHUNK_SIZE) {
+        if (m_rows.size() == InMemoryRowCache.CHUNK_SIZE) {
             m_rowCache.addChunk(m_rows, false);
-            m_rows = new ArrayList<>(CHUNK_SIZE);
+            m_rows = new ArrayList<>(InMemoryRowCache.CHUNK_SIZE);
         }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void setFully(final BufferedDataTable table) throws InterruptedException {
+        m_rowCache.setFully(table);
     }
 
     /** {@inheritDoc} */

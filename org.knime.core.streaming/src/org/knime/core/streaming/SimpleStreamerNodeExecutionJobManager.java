@@ -61,7 +61,7 @@ import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
 
 /**
- *
+ * Job Manager for a streaming sub node.
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  * @author Michael Berthold, KNIME.com, Zurich, Switzerland
  */
@@ -80,12 +80,13 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
         SimpleStreamerNodeExecutionJob.STREAMING_EXECUTOR_SERVICE.execute(new Runnable() {
             @Override
             public void run() {
+                SingleNodeStreamer.updateThreadName("Master");
                 NodeContext.pushContext(nc);
                 try {
-                    SimpleStreamerNodeExecutionJob.updateThreadName("Master");
                     job.run();
                 } finally {
                     NodeContext.removeLastContext();
+                    SingleNodeStreamer.updateThreadName("IDLE");
                 }
             }
         });

@@ -51,11 +51,11 @@ package org.knime.core.streaming;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -65,19 +65,17 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.commons.lang3.ArrayUtils;
-import org.knime.core.data.DataTableSpec;
-import org.knime.core.node.ExecutionContext;
+import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.NodeLogger;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
-import org.knime.core.node.streamable.PartitionInfo;
-import org.knime.core.node.streamable.StreamableOperator;
+import org.knime.core.node.port.PortType;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.ConnectionProgress;
+import org.knime.core.node.workflow.ConnectionProgressEvent;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContainer;
-import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
 import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.NodeMessage;
@@ -88,12 +86,14 @@ import org.knime.core.node.workflow.execresult.NodeContainerExecutionStatus;
 import org.knime.core.node.workflow.execresult.SingleNodeContainerExecutionResult;
 import org.knime.core.node.workflow.execresult.SubnodeContainerExecutionResult;
 import org.knime.core.node.workflow.execresult.WorkflowExecutionResult;
+import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.InMemoryRowCache;
-import org.knime.core.streaming.inoutput.InMemoryRowInput;
-import org.knime.core.streaming.inoutput.InMemoryRowOutput;
+import org.knime.core.streaming.inoutput.NonTableOutputCache;
+import org.knime.core.streaming.inoutput.NullOutputCache;
 import org.knime.core.util.Pair;
 
 /**
+ * Job that streams a {@link SubNodeContainer}. Only streaming, no parallelization.
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
@@ -112,7 +112,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             final AtomicInteger THREAD_ID = new AtomicInteger();
         @Override
         public Thread newThread(final Runnable r) {
-            Thread t = new Thread(r, "Streaming-" + THREAD_ID.getAndIncrement());
+            Thread t = new Thread(r, "Streaming-" + THREAD_ID.getAndIncrement() + "-IDLE");
             t.setUncaughtExceptionHandler(UNCAUGHT_EXCEPTION_HANDLER);
             return t;
         }
@@ -121,15 +121,16 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     /** The thread performing {@link #mainExecute()} - will be interrupted when canceled. */
     private Thread m_mainThread;
 
-    /**
-     * @param nc
-     * @param data
+    /** Creates new job.
+     * @param nc Node to stream, must be a {@link SubNodeContainer} (fails later on otherwise).
+     * @param data Its input data.
      */
     public SimpleStreamerNodeExecutionJob(final NodeContainer nc, final PortObject[] data) {
         super(nc, data);
     }
 
-    /** {@inheritDoc} */
+    /** {@inheritDoc}
+     * @return <code>false</code>. */
     @Override
     protected boolean isReConnecting() {
         return false;
@@ -157,19 +158,27 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         SubNodeContainer subnodeContainer = (SubNodeContainer)nodeContainer;
         WorkflowManager wfm = subnodeContainer.getWorkflowManager();
         Collection<NodeContainer> allNodeContainers = wfm.getNodeContainers();
-        HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches;
+        allNodeContainers.stream().forEach(n -> n.setNodeMessage(NodeMessage.NONE));
+        Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches;
         try {
             connectionCaches = prepareConnectionCaches(nodeContainer, wfm, allNodeContainers);
-        } catch (WrappedNodeExecutionStatusException e1) {
-            return e1.getStatus();
+        } catch (WrappedNodeExecutionStatusException e) {
+            return e.getStatus();
         }
+
+        final Map<NodeContainer, SingleNodeStreamer> createStreamers;
+        try {
+            createStreamers = createStreamers(wfm, allNodeContainers, connectionCaches);
+        } catch (WrappedNodeExecutionStatusException e) {
+            return e.getStatus();
+        }
+
         List<Pair<NodeContainer, Future<Void>>> nodeThreadList = new ArrayList<>(allNodeContainers.size());
         ExecutorCompletionService<Void> completionService =
                 new ExecutorCompletionService<Void>(STREAMING_EXECUTOR_SERVICE);
-        try {
-            submitJobs(wfm, allNodeContainers, connectionCaches, nodeThreadList, completionService);
-        } catch (WrappedNodeExecutionStatusException e1) {
-            return e1.getStatus();
+
+        for (Map.Entry<NodeContainer, SingleNodeStreamer> e : createStreamers.entrySet()) {
+            nodeThreadList.add(Pair.create(e.getKey(), completionService.submit(e.getValue().newCallable())));
         }
 
         String failMessage = null;
@@ -235,100 +244,126 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     }
 
     /**
-     * @param wfm
-     * @param allNodeContainers
-     * @param connectionCaches
-     * @param nodeThreadList
-     * @param completionService
-     */
-    private void submitJobs(final WorkflowManager wfm, final Collection<NodeContainer> allNodeContainers,
-        final HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches,
-        final List<Pair<NodeContainer, Future<Void>>> nodeThreadList,
-        final ExecutorCompletionService<Void> completionService)
-                throws WrappedNodeExecutionStatusException {
-        for (NodeContainer nc : allNodeContainers) {
-            final NativeNodeContainer nnc = (NativeNodeContainer)nc;
-            // collect incoming caches
-            final InMemoryRowInput[]  inCaches = new InMemoryRowInput[nnc.getNrInPorts() - 1];
-            for (int i = 0; i < inCaches.length; i++) {
-                ConnectionContainer cc = wfm.getIncomingConnectionFor(nnc.getID(), i + 1);
-                if (cc == null) {
-                    throw new WrappedNodeExecutionStatusException(NodeContainerExecutionStatus.FAILURE);
-                }
-                InMemoryRowCache imrc = connectionCaches.get(Pair.create(cc.getSource(), cc.getSourcePort() - 1));
-                inCaches[i] = imrc.createRowInput(cc);
-            }
-            // collect outgoing caches
-            final InMemoryRowOutput[]  outCaches = new InMemoryRowOutput[nnc.getNrOutPorts() - 1];
-            for (int o = 0; o < outCaches.length; o++) {
-                InMemoryRowCache imrc = connectionCaches.get(Pair.create(nnc.getID(), o));
-                outCaches[o] = imrc.createRowOutput();
-            }
-
-            final PortObjectSpec[] inSpecs = ArrayUtils.remove(wfm.getNodeInputSpecs(nnc.getID()), 0);
-            Future<Void> future = completionService.submit(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    updateThreadName(nnc.getNameWithID());
-                    NodeContext.pushContext(nnc);
-                    try {
-                        final StreamableOperator strop = nnc.getNodeModel().createStreamableOperator(
-                            new PartitionInfo(0, 1), inSpecs);
-                        ExecutionContext exec = nnc.createExecutionContext();
-                        nnc.getNode().openFileStoreHandler(exec);
-                        strop.runFinal(inCaches, outCaches, exec.createSubExecutionContext(0.0));
-                        return null;
-                    } finally {
-                        NodeContext.removeLastContext();
-                        for (InMemoryRowInput input : inCaches) {
-                            input.close();
-                        }
-                        for (InMemoryRowOutput output : outCaches) {
-                            try {
-                                output.close();
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to close output: " + e.getMessage(), e);
-                            }
-                        }
-                    }
-                }
-            });
-            nodeThreadList.add(Pair.create((NodeContainer)nnc, future));
-        }
-    }
-
-    /**
      * @param nodeContainer
      * @param wfm
      * @param allNodeContainers
      * @return
      */
-    private HashMap<Pair<NodeID, Integer>, InMemoryRowCache> prepareConnectionCaches(final NodeContainer nodeContainer,
-        final WorkflowManager wfm, final Collection<NodeContainer> allNodeContainers)
+    private Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> prepareConnectionCaches(
+        final NodeContainer nodeContainer, final WorkflowManager wfm, final Collection<NodeContainer> allNodeContainers)
                 throws WrappedNodeExecutionStatusException {
-        HashMap<Pair<NodeID, Integer>, InMemoryRowCache> connectionCaches
-            = new LinkedHashMap<Pair<NodeID, Integer>, InMemoryRowCache>();
+        Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches = new LinkedHashMap<>();
         for (NodeContainer nc : allNodeContainers) {
             if (!(nc instanceof NativeNodeContainer)) {
                 String message = "Subnodes must only contain native nodes in order to be streamed: "
                         + nc.getNameWithID();
-                nodeContainer.setNodeMessage(new NodeMessage(Type.ERROR, message));
+                nodeContainer.setNodeMessage(NodeMessage.newError(message));
                 LOGGER.error(message);
                 throw new WrappedNodeExecutionStatusException(NodeContainerExecutionStatus.FAILURE);
             }
-            for (int op = 0; op < nc.getNrOutPorts() - 1; op++) {
-                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op + 1);
-                DataTableSpec spec = (DataTableSpec)(nc.getOutPort(op + 1).getPortObjectSpec());
-                connectionCaches.put(Pair.create(nc.getID(), op), new InMemoryRowCache(ccs.size(), spec));
+            NativeNodeContainer nnc = (NativeNodeContainer)nc;
+            final boolean isDiamondStart = isDiamondStart(wfm, nnc);
+            for (int op = 0; op < nc.getNrOutPorts(); op++) {
+                PortType portType = nc.getOutPort(op).getPortType();
+                final boolean isData = BufferedDataTable.TYPE.equals(portType)
+                        || BufferedDataTable.TYPE_OPTIONAL.equals(portType);
+                int nrStreamedConsumers = 0;
+                boolean doStage = false;
+                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
+                for (ConnectionContainer cc : ccs) {
+                    NodeID dest = cc.getDest();
+                    int destPort = cc.getDestPort();
+                    NativeNodeContainer destNode = wfm.getNodeContainer(dest, NativeNodeContainer.class, false);
+                    if (destNode == null) { // could be a meta node or so -- assume false
+                        doStage = true;
+                    } else if (destPort == 0) {
+                        assert !isData : "no data port at index 0";
+                    } else {
+                        if (isData && destNode.getNodeModel().getInputPortRoles()[destPort - 1].isStreamable()) {
+                            nrStreamedConsumers += 1;
+                        } else {
+                            doStage = true;
+                        }
+                    }
+                    ConnectionProgress p = new ConnectionProgress(nrStreamedConsumers > 0, isData ? "0" : "");
+                    cc.progressChanged(new ConnectionProgressEvent(cc, p));
+                }
+                AbstractOutputCache<? extends PortObjectSpec> outputCache;
+                if (isData) {
+                    outputCache = new InMemoryRowCache(nnc.createExecutionContext(), nrStreamedConsumers,
+                        doStage, isDiamondStart);
+                } else {
+                    outputCache = new NonTableOutputCache();
+                }
+                connectionCaches.put(new NodeIDWithOutport(nc.getID(), op), outputCache);
             }
         }
         return connectionCaches;
     }
 
-    static void updateThreadName(final String nameSuffix) {
-        String name = Thread.currentThread().getName();
-        name = name.replaceAll("^(Streaming-\\d+).*", "$1-" + nameSuffix);
-        Thread.currentThread().setName(name);
+    private boolean isDiamondStart(final WorkflowManager wfm, final NativeNodeContainer nnc) {
+        // assert Thread.holdsLock(wfm.getWorkflowMutex());
+        final HashSet<NodeID> visitedDownstreamNodes = new HashSet<>();
+        final HashSet<NodeID> downstreamNodes = new HashSet<>();
+        for (ConnectionContainer cc : wfm.getOutgoingConnectionsFor(nnc.getID())) {
+            downstreamNodes.clear();
+            collectDepthFirst(wfm, cc, downstreamNodes);
+            int oldSize = visitedDownstreamNodes.size();
+            visitedDownstreamNodes.addAll(downstreamNodes);
+            if (visitedDownstreamNodes.size() < oldSize + downstreamNodes.size()) {
+                // nnc is branching down-stream and those branches are merged again later
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void collectDepthFirst(final WorkflowManager wfm, final ConnectionContainer cc, final HashSet<NodeID> set) {
+        set.add(cc.getDest());
+        for (ConnectionContainer nextLevelOutCC : wfm.getOutgoingConnectionsFor(cc.getDest())) {
+            collectDepthFirst(wfm, nextLevelOutCC, set);
+        }
+    }
+
+    private Map<NodeContainer, SingleNodeStreamer> createStreamers(final WorkflowManager wfm,
+        final Collection<NodeContainer> allNodeContainers,
+        final Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches)
+                throws WrappedNodeExecutionStatusException {
+        Map<NodeContainer, SingleNodeStreamer> resultMap = new LinkedHashMap<>();
+        for (NodeContainer nc : allNodeContainers) {
+            final NativeNodeContainer nnc = (NativeNodeContainer)nc;
+            final int nrIns = nnc.getNrInPorts();
+            final int nrOuts = nnc.getNrOutPorts();
+            final NodeID id = nnc.getID();
+
+            AbstractOutputCache<? extends PortObjectSpec>[] outputCaches = new AbstractOutputCache[nrOuts];
+            for (int i = 0; i < nrOuts; i++) {
+                outputCaches[i] = connectionCaches.get(new NodeIDWithOutport(id, i));
+                CheckUtils.checkState(outputCaches[i] != null, "No output cache for node %s, port %d", id, i);
+            }
+
+            AbstractOutputCache<? extends PortObjectSpec>[] upStreamCaches = new AbstractOutputCache[nrIns];
+            for (int i = 0; i < upStreamCaches.length; i++) {
+                PortType inportType = nnc.getInPort(i).getPortType();
+                ConnectionContainer cc = wfm.getIncomingConnectionFor(id, i);
+                if (cc == null) {
+                    if (!inportType.isOptional()) {
+                        throw new WrappedNodeExecutionStatusException(NodeContainerExecutionStatus.newFailure(
+                            String.format("Node %s not fully connected", nnc.getNameWithID())));
+                    } else {
+                        upStreamCaches[i] = NullOutputCache.INSTANCE;
+                    }
+                } else {
+                    AbstractOutputCache<? extends PortObjectSpec> upStreamCache =
+                            connectionCaches.get(new NodeIDWithOutport(cc.getSource(), cc.getSourcePort()));
+                    CheckUtils.checkState(upStreamCache != null, "No cache object for input %d at node %s",
+                            cc.getDestPort(), id);
+                    upStreamCaches[i] = upStreamCache;
+                }
+            }
+            resultMap.put(nnc, new SingleNodeStreamer(nnc, outputCaches, upStreamCaches));
+        }
+        return resultMap;
     }
 
     /** {@inheritDoc} */
@@ -353,6 +388,41 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         /** @return the status (non-null) */
         public NodeContainerExecutionStatus getStatus() {
             return m_status;
+        }
+    }
+
+    static final class NodeIDWithOutport {
+        private final NodeID m_nodeID;
+        private final int m_index;
+
+        NodeIDWithOutport(final NodeID nodeID, final int index) {
+            m_nodeID = CheckUtils.checkArgumentNotNull(nodeID, "Arg must not be null");
+            m_index = index;
+        }
+        int getIndex() {
+            return m_index;
+        }
+        NodeID getNodeID() {
+            return m_nodeID;
+        }
+        @Override
+        public int hashCode() {
+            return m_nodeID.hashCode() + m_index;
+        }
+        @Override
+        public boolean equals(final Object obj) {
+            if (obj == this) {
+                return true;
+            }
+            if (!(obj instanceof NodeIDWithOutport)) {
+                return false;
+            }
+            NodeIDWithOutport other = (NodeIDWithOutport)obj;
+            return m_nodeID.equals(other.m_nodeID) && m_index == other.m_index;
+        }
+        @Override
+        public String toString() {
+            return "<" + m_nodeID + " - " + m_index + ">";
         }
     }
 

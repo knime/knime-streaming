@@ -44,74 +44,46 @@
  * ---------------------------------------------------------------------
  *
  * History
- *   Mar 10, 2015 (wiswedel): created
+ *   Mar 26, 2015 (wiswedel): created
  */
 package org.knime.core.streaming.inoutput;
 
-import java.util.List;
-
-import org.knime.core.data.DataRow;
-import org.knime.core.data.DataTableSpec;
-import org.knime.core.node.streamable.RowInput;
+import org.knime.core.node.port.PortObjectSpec;
+import org.knime.core.node.streamable.InputPortRole;
+import org.knime.core.node.streamable.PortInput;
+import org.knime.core.node.streamable.PortOutput;
 import org.knime.core.node.workflow.ConnectionContainer;
 
 /**
- * {@link RowInput} passed to streaming nodes. It reads from {@link InMemoryRowCache}.
- *
+ * Fake cache to from which nodes with unconnected optional inputs derive their (null) input.
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
-public final class InMemoryRowInput extends RowInput {
+public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
 
-    private final int m_consumerID;
-    private final InMemoryRowCache m_rowCache;
-    private final ConnectionContainer m_connection;
-    private List<DataRow> m_currentChunk;
-    private int m_iteratorIndex;
-    private long m_currentRowCount;
+    /** Singleton instance to be used. */
+    public static final NullOutputCache INSTANCE = new NullOutputCache();
 
-    InMemoryRowInput(final int consumerID, final ConnectionContainer cc, final InMemoryRowCache rowCache) {
-        m_consumerID = consumerID;
-        m_connection = cc;
-        m_rowCache = rowCache;
-        InMemoryRowCache.fireProgressEvent(m_connection, false, 0);
-    }
-
-    /** @return the consumerID */
-    int getConsumerID() {
-        return m_consumerID;
+    private NullOutputCache() {
+        super(PortObjectSpec.class);
     }
 
     /** {@inheritDoc} */
     @Override
-    public DataTableSpec getDataTableSpec() {
-        try {
-            return m_rowCache.getPortObjectSpec();
-        } catch (InterruptedException e) {
-            assert false : "Spec was supposed to be available already at construction time";
-            throw new RuntimeException(e);
-        }
+    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc) throws InterruptedException {
+        return null;
     }
 
     /** {@inheritDoc} */
     @Override
-    public DataRow poll() throws InterruptedException {
-        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
-            m_currentChunk = m_rowCache.getChunk(this);
-            m_iteratorIndex = 0;
-        }
-        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
-            InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
-            return null;
-        } else {
-            InMemoryRowCache.fireProgressEvent(m_connection, true, m_currentRowCount++);
-            return m_currentChunk.get(m_iteratorIndex++);
-        }
+    public PortObjectSpec getPortObjectSpec() {
+        return null;
     }
 
     /** {@inheritDoc} */
     @Override
-    public void close() {
-        InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
+    public
+    PortOutput getPortOutput() {
+        throw new IllegalStateException("not to be called");
     }
 
 }
