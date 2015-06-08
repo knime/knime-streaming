@@ -69,6 +69,7 @@ import org.knime.core.node.streamable.RowOutput;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.ConnectionProgress;
+import org.knime.core.node.workflow.ConnectionProgress.StringSupplier;
 import org.knime.core.node.workflow.ConnectionProgressEvent;
 
 /**
@@ -346,9 +347,12 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
     private static final NumberFormat FORMAT = NumberFormat.getIntegerInstance();
 
     static void fireProgressEvent(final ConnectionContainer cc, final boolean isInProgress, final long currentRow) {
-        cc.progressChanged(new ConnectionProgressEvent(cc, new ConnectionProgress(isInProgress, () -> {
-            synchronized (FORMAT) {
-                return FORMAT.format(currentRow);
+        cc.progressChanged(new ConnectionProgressEvent(cc, new ConnectionProgress(isInProgress, new StringSupplier() {
+            @Override
+            public String get() {
+                synchronized (FORMAT) {
+                    return FORMAT.format(currentRow);
+                }
             }
         })));
     }

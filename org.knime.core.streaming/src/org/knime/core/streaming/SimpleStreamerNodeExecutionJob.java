@@ -348,7 +348,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 ConnectionContainer cc = wfm.getIncomingConnectionFor(id, i);
                 if (cc == null) {
                     if (!inportType.isOptional()) {
-                        throw new WrappedNodeExecutionStatusException(NodeContainerExecutionStatus.newFailure(
+                        throw new WrappedNodeExecutionStatusException(new MyNodeContainerExecutionStatus(
                             String.format("Node %s not fully connected", nnc.getNameWithID())));
                     } else {
                         upStreamCaches[i] = NullOutputCache.INSTANCE;
@@ -375,6 +375,37 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             return true;
         }
         return false;
+    }
+
+    private static final class MyNodeContainerExecutionStatus implements NodeContainerExecutionStatus {
+
+        private final String m_message;
+
+        /** @param message Messge to wrap. */
+        private MyNodeContainerExecutionStatus(final String message) {
+            m_message = CheckUtils.checkArgumentNotNull(message);
+        }
+
+        /**
+         * @param idSuffix ignored
+         * @return {@link NodeContainerExecutionStatus#FAILURE} (this)
+         */
+        @Override
+        public NodeContainerExecutionStatus getChildStatus(final int idSuffix) {
+            return this;
+        }
+
+        /** @return false */
+        @Override
+        public boolean isSuccess() {
+            return false;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public String toString() {
+            return m_message;
+        }
     }
 
     static final class WrappedNodeExecutionStatusException extends Exception {
