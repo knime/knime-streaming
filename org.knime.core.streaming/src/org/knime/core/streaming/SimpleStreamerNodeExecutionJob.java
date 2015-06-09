@@ -158,7 +158,10 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         SubNodeContainer subnodeContainer = (SubNodeContainer)nodeContainer;
         WorkflowManager wfm = subnodeContainer.getWorkflowManager();
         Collection<NodeContainer> allNodeContainers = wfm.getNodeContainers();
-        allNodeContainers.stream().forEach(n -> n.setNodeMessage(NodeMessage.NONE));
+        for (NodeContainer nc : allNodeContainers) {
+            nc.setNodeMessage(NodeMessage.NONE);
+        }
+
         Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches;
         try {
             connectionCaches = prepareConnectionCaches(nodeContainer, wfm, allNodeContainers);
