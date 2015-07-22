@@ -132,6 +132,13 @@ final class SingleNodeStreamer {
                 }
                 final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
 
+                // need a final call to configure in order to propagate flow variables into the configuration
+                //
+                // this potentially has race conditions with streamed inports - it's not deterministic if an upstream
+                // node has published all flow variables when this method gets call. It's deterministic for
+                // non-streamable ports as their port objects are already queried/available (unless a node pushes
+                // flow variables after setting the result)
+                m_nnc.getParent().configureSingleNodeContainer(m_nnc, true);
                 PortObjectSpec[] outSpecsNoFlowPort = nM.computeFinalOutputSpecs(streamInternals, inSpecsNoFlowPort);
                 if (outSpecsNoFlowPort != null) {
                     m_outputCaches[0].setPortObjectSpec(FlowVariablePortObjectSpec.INSTANCE);
@@ -149,8 +156,7 @@ final class SingleNodeStreamer {
                     outputs[i] = m_outputCaches[i].getPortOutput();
                 }
 
-                final StreamableOperator strop = nM.createStreamableOperator(
-                    new PartitionInfo(0, 1), inSpecsNoFlowPort);
+                final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
                 ExecutionContext exec = m_nnc.createExecutionContext();
                 m_nnc.getNode().openFileStoreHandler(exec);
                 strop.runFinal(ArrayUtils.remove(inputs, 0), ArrayUtils.remove(outputs, 0),
