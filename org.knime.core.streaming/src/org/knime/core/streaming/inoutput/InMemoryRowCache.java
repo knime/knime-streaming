@@ -71,6 +71,8 @@ import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.ConnectionProgress;
 import org.knime.core.node.workflow.ConnectionProgress.StringSupplier;
 import org.knime.core.node.workflow.ConnectionProgressEvent;
+import org.knime.core.node.workflow.FlowObjectStack;
+import org.knime.core.node.workflow.SingleNodeContainer;
 
 /**
  * (Non-)Cache for table ports. Caching of the data into a {@link BufferedDataTable} is done if
@@ -121,16 +123,16 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     /**
      * New cache.
-     *
+     * @param nnc The associated node (used to query variables).
      * @param context to create BDT from in case a consumer needs full access.
      * @param nrStreamedConsumers Number of streaming consumers to be created - no data is accepted until all consumers
      *            have been created.
      * @param doStage If the data is to be cached as a downstream node require full access.
      * @param isDiamondSource If node is branching (see member description for details).
      */
-    public InMemoryRowCache(final ExecutionContext context, final int nrStreamedConsumers, final boolean doStage,
-        final boolean isDiamondSource) {
-        super(DataTableSpec.class);
+    public InMemoryRowCache(final SingleNodeContainer nnc, final ExecutionContext context, final int nrStreamedConsumers,
+        final boolean doStage, final boolean isDiamondSource) {
+        super(CheckUtils.checkArgumentNotNull(nnc), DataTableSpec.class);
         m_streamedConsumerCount = nrStreamedConsumers;
         m_context = CheckUtils.checkArgumentNotNull(context, "Exec Context must not be null");
         m_doStage = doStage || isDiamondSource;
@@ -206,6 +208,22 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         try {
             checkNotInUse();
             return new InMemoryRowOutput(this);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public FlowObjectStack getFlowObjectStack(final InputPortRole inputRole) throws InterruptedException {
+        if (inputRole.isStreamable()) {
+            return null;
+        }
+        final ReentrantLock lock = getLock();
+        lock.lockInterruptibly();
+        try {
+            waitForStagedTable(); // wait for table to be available
+            return getSingleNodeContainer().createOutFlowObjectStack();
         } finally {
             lock.unlock();
         }

@@ -293,10 +293,10 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 }
                 AbstractOutputCache<? extends PortObjectSpec> outputCache;
                 if (isData) {
-                    outputCache = new InMemoryRowCache(nnc.createExecutionContext(), nrStreamedConsumers,
-                        doStage, isDiamondStart);
+                    outputCache = new InMemoryRowCache(nnc, nnc.createExecutionContext(),
+                        nrStreamedConsumers, doStage, isDiamondStart);
                 } else {
-                    outputCache = new NonTableOutputCache();
+                    outputCache = new NonTableOutputCache(nnc);
                 }
                 connectionCaches.put(new NodeIDWithOutport(nc.getID(), op), outputCache);
             }

@@ -50,6 +50,7 @@ package org.knime.core.streaming.inoutput;
 
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
@@ -60,6 +61,8 @@ import org.knime.core.node.streamable.PortObjectOutput;
 import org.knime.core.node.streamable.PortOutput;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.FlowObjectStack;
+import org.knime.core.node.workflow.SingleNodeContainer;
 
 /** An output cache used for all non-table ports. It will block all input retrieval until the data is pushed by
  * the producing node.
@@ -71,9 +74,10 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
     private final PortObjectOutput m_portObjectOutput;
     private PortObject m_portObject;
 
-    /** Only inits fields and sets spec in super class. */
-    public NonTableOutputCache() {
-        super(PortObjectSpec.class);
+    /** Only inits fields and sets spec in super class.
+     * @param nnc The associated node (used to query variables). */
+    public NonTableOutputCache(final SingleNodeContainer nnc) {
+        super(CheckUtils.checkArgumentNotNull(nnc), PortObjectSpec.class);
         m_portObjectInputNotSetCondition = getLock().newCondition();
         m_portObjectOutput = new SyncedPortObjectOutput();
     }
@@ -126,6 +130,20 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
     @Override
     public PortOutput getPortOutput() {
         return m_portObjectOutput;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public FlowObjectStack getFlowObjectStack(final InputPortRole inputRole) throws InterruptedException {
+        CheckUtils.checkState(!inputRole.isStreamable(), "Non-table port can't be streamed");
+        final ReentrantLock lock = getLock();
+        lock.lockInterruptibly();
+        try {
+            getPortObject(); // wait for output to be populated
+            return getSingleNodeContainer().createOutFlowObjectStack();
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** Output object that redirects the object into this cache. */

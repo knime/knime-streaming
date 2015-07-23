@@ -57,6 +57,8 @@ import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortOutput;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.FlowObjectStack;
+import org.knime.core.node.workflow.SingleNodeContainer;
 
 /**
  * Abstract object associated with a port output that synchronizes access to the port resource. A cache gets filled by a
@@ -70,14 +72,18 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
     private final ReentrantLock m_lock;
     private final Condition m_portObjectSpecNotSetCondition;
 
+    private final SingleNodeContainer m_snc;
+
     private final Class<SPEC> m_specClass;
 
     private SPEC m_portObjectSpec;
 
     /** Inits locks etc.
+     * @param nnc The associated node (used to query variables).
      * @param cl Class of the spec. */
-    AbstractOutputCache(final Class<SPEC> cl) {
+    AbstractOutputCache(final SingleNodeContainer nnc, final Class<SPEC> cl) {
         m_lock = new ReentrantLock();
+        m_snc = nnc;
         m_portObjectSpecNotSetCondition = m_lock.newCondition();
         m_specClass = CheckUtils.checkArgumentNotNull(cl, "Arg must not be null");
     }
@@ -127,6 +133,18 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
             m_lock.unlock();
         }
     }
+
+    /** @return the node as set in constructor. */
+    final SingleNodeContainer getSingleNodeContainer() {
+        return m_snc;
+    }
+
+    /** The outgoing flow object stack associated with the node (may be an empty stack for streamed connections).
+     * @param inputRole role of the input of the downstream node - only non-streamable will receive flow objects
+     * @return the upstream flow object stack
+     * @throws InterruptedException while canceled while waiting for completion.
+     */
+    public abstract FlowObjectStack getFlowObjectStack(final InputPortRole inputRole) throws InterruptedException;
 
     /**
      * Call by the outport's node to have a handle to push the output to. This method is supposed to be called only once

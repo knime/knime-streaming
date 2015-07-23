@@ -53,6 +53,7 @@ import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortOutput;
 import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.FlowObjectStack;
 
 /**
  * Fake cache to from which nodes with unconnected optional inputs derive their (null) input.
@@ -64,7 +65,7 @@ public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
     public static final NullOutputCache INSTANCE = new NullOutputCache();
 
     private NullOutputCache() {
-        super(PortObjectSpec.class);
+        super(null, PortObjectSpec.class);
     }
 
     /** {@inheritDoc} */
@@ -76,6 +77,12 @@ public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
     /** {@inheritDoc} */
     @Override
     public PortObjectSpec getPortObjectSpec() {
+        return null;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public FlowObjectStack getFlowObjectStack(final InputPortRole inputRole) throws InterruptedException {
         return null;
     }
 

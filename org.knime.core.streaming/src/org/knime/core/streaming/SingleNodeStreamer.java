@@ -64,6 +64,7 @@ import org.knime.core.node.streamable.StreamableOperator;
 import org.knime.core.node.streamable.StreamableOperatorInternals;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
+import org.knime.core.node.workflow.FlowObjectStack;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.WorkflowManager;
@@ -116,9 +117,12 @@ final class SingleNodeStreamer {
                 final InputPortRole[] inputPortRoles = ArrayUtils.add(
                     nM.getInputPortRoles(), 0, InputPortRole.NONDISTRIBUTED_NONSTREAMABLE);
 
+                final FlowObjectStack[] flowObjectStacks = new FlowObjectStack[m_upStreamCaches.length];
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
                     final ConnectionContainer inCC = parent.getIncomingConnectionFor(m_nnc.getID(), i);
                     inputs[i] = m_upStreamCaches[i].getPortInput(inputPortRoles[i], inCC);
+                    final FlowObjectStack stack = m_upStreamCaches[i].getFlowObjectStack(inputPortRoles[i]);
+                    flowObjectStacks[i] = stack;
                 }
 
                 StreamableOperatorInternals streamInternals = nM.createInitialStreamableOperatorInternals();
@@ -132,13 +136,21 @@ final class SingleNodeStreamer {
                 }
                 final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
 
-                // need a final call to configure in order to propagate flow variables into the configuration
-                //
-                // this potentially has race conditions with streamed inports - it's not deterministic if an upstream
-                // node has published all flow variables when this method gets call. It's deterministic for
-                // non-streamable ports as their port objects are already queried/available (unless a node pushes
-                // flow variables after setting the result)
-                m_nnc.getParent().configureSingleNodeContainer(m_nnc, true);
+                boolean isConfigureOK;
+
+                synchronized (m_nnc.getParent().getWorkflowMutex()) {
+                    m_nnc.getParent().createAndSetFlowObjectStackFor(m_nnc, flowObjectStacks);
+                    // need a final call to configure in order to propagate flow variables into the configuration
+                    //
+                    // this potentially has race conditions with streamed inports - it's not deterministic if an
+                    // upstream node has published all flow variables when this method gets call. It's deterministic
+                    // for non-streamable ports as their port objects are already queried/available (unless a node
+                    // pushes flow variables after setting the result)
+                    isConfigureOK = m_nnc.callNodeConfigure(inSpecs, true);
+                }
+
+                CheckUtils.checkSetting(isConfigureOK, "Configuration failed");
+
                 PortObjectSpec[] outSpecsNoFlowPort = nM.computeFinalOutputSpecs(streamInternals, inSpecsNoFlowPort);
                 if (outSpecsNoFlowPort != null) {
                     m_outputCaches[0].setPortObjectSpec(FlowVariablePortObjectSpec.INSTANCE);
