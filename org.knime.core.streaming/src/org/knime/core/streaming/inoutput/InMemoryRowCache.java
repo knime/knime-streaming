@@ -250,6 +250,8 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 if (isLast) {
                     m_stagingDataContainer.close();
                     m_stagedDataTable = m_stagingDataContainer.getTable();
+                    // update spec (this also contains the domain)
+                    setPortObjectSpec(m_stagedDataTable.getDataTableSpec());
                     m_stagingDataContainer = null;
                     m_requireFullDataConsumeCondition.signalAll();
                 }
