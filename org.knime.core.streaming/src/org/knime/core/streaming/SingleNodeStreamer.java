@@ -67,6 +67,7 @@ import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.FlowObjectStack;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContext;
+import org.knime.core.node.workflow.WorkflowLock;
 import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
@@ -138,7 +139,7 @@ final class SingleNodeStreamer {
 
                 boolean isConfigureOK;
 
-                synchronized (m_nnc.getParent().getWorkflowMutex()) {
+                try (WorkflowLock lock = m_nnc.getParent().lock()) {
                     m_nnc.getParent().createAndSetFlowObjectStackFor(m_nnc, flowObjectStacks);
                     // need a final call to configure in order to propagate flow variables into the configuration
                     //
