@@ -51,6 +51,7 @@ package org.knime.core.streaming.inoutput;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
@@ -134,6 +135,12 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
         }
     }
 
+    /** Plain getter to port object spec - returning null if none has been set.
+     * @return The spec or null. */
+    public SPEC getPortObjectSpecNoWait() {
+        return m_portObjectSpec;
+    }
+
     /** @return the node as set in constructor. */
     final SingleNodeContainer getSingleNodeContainer() {
         return m_snc;
@@ -153,6 +160,12 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
      * @return The non-null output that then evenually will put spec and data into this cache.
      */
     public abstract PortOutput getPortOutput();
+
+    /** A portobject that is put into the node's output after the streamer finishes execution (all green). For
+     * non-table ports this usually contains a real object (e.g. PMML); for table ports this is usually a void table.
+     * @return port object to be put into node's output, not null.
+     */
+    public abstract PortObject getPortObjectMock();
 
     /**
      * Called by downstream workers to get a handle to the data. This method will block until all set-up is done, e.g.

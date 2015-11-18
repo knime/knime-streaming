@@ -109,43 +109,48 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     @Override
     // Determines the decorating icon for a native node. Green = natively streams; Red = not streaming.
     public URL getIconForChild(final NodeContainer child) {
-        if (child instanceof NativeNodeContainer ) {
-            NativeNodeContainer nnc = (NativeNodeContainer)child;
+        return implementsStreamingAPI(child) ? STREAMING_GREEN : STREAMING_RED;
+    }
+
+    /** Uses reflection to test whether the underlying NodeModel implements any of
+     * {@link NodeModel#getInputPortRoles()}, {@link NodeModel#getOutputPortRoles()}, or
+     * {@link NodeModel#createStreamableOperator(PartitionInfo, PortObjectSpec[])}
+     *
+     * <p />
+     * If so a different icon is shown attached to the node icon or a different action is used within the executor.
+     * Meta nodes and Sub nodes are not streamable (but their content may).
+     * @param nc The node to test.
+     * @return That property.
+     */
+    public static final boolean implementsStreamingAPI(final NodeContainer nc) {
+        if (nc instanceof NativeNodeContainer ) {
+            NativeNodeContainer nnc = (NativeNodeContainer)nc;
             NodeModel model = nnc.getNodeModel();
             Class<?> cl = model.getClass();
             do {
                 try {
                     cl.getDeclaredMethod("getInputPortRoles");
-                    return STREAMING_GREEN;
+                    return true;
                 } catch (Exception e) {
                     // ignore, check superclass
                 }
                 try {
                     cl.getDeclaredMethod("getOutputPortRoles");
-                    return STREAMING_GREEN;
+                    return true;
                 } catch (Exception e) {
                     // ignore, check superclass
                 }
                 try {
                     cl.getDeclaredMethod("createStreamableOperator", PartitionInfo.class, PortObjectSpec[].class);
-                    return STREAMING_GREEN;
+                    return true;
                 } catch (Exception e) {
                     // ignore, check superclass
                 }
                 cl = cl.getSuperclass();
             } while (!NodeModel.class.equals(cl));
-
-            // // force streaming is indicated by setting the same job manager again.
-            // // this will change (we will have a separate job manager), but not
-            // // until after KNIME 2.7 is out, at which point we will have our own implementation
-            // // of AbstractNodeExecutionJobManager
-            // NodeExecutionJobManager childJobMgr = child.getJobManager();
-            // if (childJobMgr != null && childJobMgr.getClass().getSimpleName().equals("KRunnerJobManager") ) {
-            //      return STREAMING_RED;
-            // }
-            return STREAMING_RED;
+            return false;
         } else {
-            return STREAMING_RED;
+            return false;
         }
     }
 

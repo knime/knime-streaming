@@ -52,6 +52,7 @@ import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -61,6 +62,7 @@ import org.knime.core.data.RowIterator;
 import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.ExecutionContext;
+import org.knime.core.node.port.PortObject;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortObjectInput;
@@ -87,7 +89,8 @@ import org.knime.core.node.workflow.SingleNodeContainer;
 public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     /** Number of rows making up a chunk - this always needs to fit in memory. */
-    public static final int CHUNK_SIZE = 50;
+    public static final int CHUNK_SIZE = Optional.ofNullable(
+        Integer.getInteger("knime.core.streaming.chunksize")).orElse(50).intValue();
 
     private final BitSet m_hasConsumedCurrentChunkBits;
 
@@ -207,6 +210,20 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         try {
             checkNotInUse();
             return new InMemoryRowOutput(this);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public PortObject getPortObjectMock() {
+        final ReentrantLock lock = getLock();
+        lock.lock();
+        try {
+            final DataTableSpec dts = getPortObjectSpecNoWait();
+            CheckUtils.checkState(dts != null, "Spec not expected to be null at this point");
+            return m_stagedDataTable != null ? m_stagedDataTable : m_context.createVoidTable(dts);
         } finally {
             lock.unlock();
         }

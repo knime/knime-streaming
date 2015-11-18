@@ -48,6 +48,7 @@
  */
 package org.knime.core.streaming.inoutput;
 
+import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
@@ -56,7 +57,7 @@ import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.FlowObjectStack;
 
 /**
- * Fake cache to from which nodes with unconnected optional inputs derive their (null) input.
+ * Fake cache from which nodes with unconnected optional inputs derive their (null) input.
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
 public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
@@ -91,6 +92,12 @@ public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
     public
     PortOutput getPortOutput() {
         throw new IllegalStateException("not to be called");
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public PortObject getPortObjectMock() {
+        return null;
     }
 
 }

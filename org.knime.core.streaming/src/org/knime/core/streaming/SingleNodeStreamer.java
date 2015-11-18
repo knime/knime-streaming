@@ -49,10 +49,14 @@
 package org.knime.core.streaming;
 
 import java.util.concurrent.Callable;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.knime.core.node.ExecutionContext;
+import org.knime.core.node.InvalidSettingsException;
+import org.knime.core.node.NodeLogger;
 import org.knime.core.node.NodeModel;
+import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObject;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObjectSpec;
@@ -67,8 +71,11 @@ import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.FlowObjectStack;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContext;
+import org.knime.core.node.workflow.NodeMessage;
 import org.knime.core.node.workflow.WorkflowLock;
 import org.knime.core.node.workflow.WorkflowManager;
+import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResult;
+import org.knime.core.node.workflow.execresult.NodeExecutionResult;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
 
@@ -79,22 +86,27 @@ import org.knime.core.streaming.inoutput.NonTableOutputCache;
  */
 final class SingleNodeStreamer {
 
+    private static final NodeLogger LOGGER = NodeLogger.getLogger(SingleNodeStreamer.class);
+
     private final NativeNodeContainer m_nnc;
     private final AbstractOutputCache[] m_outputCaches;
     private final AbstractOutputCache[] m_upStreamCaches;
+    private final ExecutionContext m_execContext;
 
     /**
      * @param nnc The node to execute, not null.
+     * @param execContext TODO
      * @param outputCaches TODO
      */
-    SingleNodeStreamer(final NativeNodeContainer nnc, final AbstractOutputCache[] outputCaches,
-        final AbstractOutputCache[] upStreamCaches) {
+    SingleNodeStreamer(final NativeNodeContainer nnc, final ExecutionContext execContext,
+        final AbstractOutputCache[] outputCaches, final AbstractOutputCache[] upStreamCaches) {
+        m_execContext = CheckUtils.checkArgumentNotNull(execContext, "Arg must not be null");
         m_nnc = CheckUtils.checkArgumentNotNull(nnc, "Arg must not be null");
         m_outputCaches = CheckUtils.checkArgumentNotNull(outputCaches, "Arg must not be null");
         m_upStreamCaches = CheckUtils.checkArgumentNotNull(upStreamCaches, "Arg must not be null");
     }
 
-    Callable<Void> newCallable() {
+    Callable<NativeNodeContainerExecutionResult> newCallable() {
         return new SingleNodeStreamerCallable();
     }
 
@@ -104,10 +116,10 @@ final class SingleNodeStreamer {
         Thread.currentThread().setName(name);
     }
 
-    final class SingleNodeStreamerCallable implements Callable<Void> {
+    final class SingleNodeStreamerCallable implements Callable<NativeNodeContainerExecutionResult> {
 
         @Override
-        public Void call() throws Exception {
+        public NativeNodeContainerExecutionResult call() {
             updateThreadName(m_nnc.getNameWithID());
             NodeContext.pushContext(m_nnc);
             final PortInput[] inputs = new PortInput[m_upStreamCaches.length];
@@ -170,12 +182,37 @@ final class SingleNodeStreamer {
                 }
 
                 final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
-                ExecutionContext exec = m_nnc.createExecutionContext();
-                m_nnc.getNode().openFileStoreHandler(exec);
+                m_nnc.getNode().openFileStoreHandler(m_execContext);
                 strop.runFinal(ArrayUtils.remove(inputs, 0), ArrayUtils.remove(outputs, 0),
-                    exec.createSubExecutionContext(0.0));
+                    m_execContext.createSubExecutionContext(0.0));
                 ((NonTableOutputCache)m_outputCaches[0]).setObject(FlowVariablePortObject.INSTANCE);
-                return null;
+                PortObject[] rawInput = Stream.of(m_upStreamCaches).map(
+                    c -> c.getPortObjectMock()).toArray(PortObject[]::new);
+                PortObject[] rawOutput = Stream.of(m_outputCaches).map(
+                    c -> c.getPortObjectMock()).toArray(PortObject[]::new);
+                m_nnc.getNode().assignInternalHeldObjects(rawInput, null, m_execContext, rawOutput);
+                m_execContext.setMessage("Creating execution result");
+                NativeNodeContainerExecutionResult executionResult =
+                        m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0));
+                executionResult.setSuccess(true);
+                return executionResult;
+            } catch (Exception e) {
+                NativeNodeContainerExecutionResult r = new NativeNodeContainerExecutionResult();
+                r.setNodeExecutionResult(new NodeExecutionResult());
+                if (e instanceof InterruptedException) {
+                    // downstream error - ignore here
+                    LOGGER.debugWithFormat("interrupt received for \"%s\"- canceling streaming execution",
+                        m_nnc.getNameWithID());
+                } else if (e instanceof InvalidSettingsException) {
+                    LOGGER.warn(e.getMessage(), e);
+                    r.setMessage(NodeMessage.newWarning(e.getMessage()));
+                } else {
+                    String error = "(" + e.getClass().getSimpleName() + "): " + e.getMessage();
+                    LOGGER.error(error, e);
+                    r.setMessage(NodeMessage.newError(e.getMessage()));
+                }
+                r.setSuccess(false);
+                return r;
             } finally {
                 NodeContext.removeLastContext();
                 updateThreadName("IDLE");

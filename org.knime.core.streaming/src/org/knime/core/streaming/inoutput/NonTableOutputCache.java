@@ -132,6 +132,15 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         return m_portObjectOutput;
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public PortObject getPortObjectMock() {
+        CheckUtils.checkState(m_portObject != null, "PortObject expected to be set at this point");
+        return m_portObject;
+    }
+
     /** {@inheritDoc} */
     @Override
     public FlowObjectStack getFlowObjectStack(final InputPortRole inputRole) throws InterruptedException {
