@@ -182,6 +182,7 @@ final class SingleNodeStreamer {
                 }
 
                 final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
+                strop.loadInternals(streamInternals);
                 m_nnc.getNode().openFileStoreHandler(m_execContext);
                 strop.runFinal(ArrayUtils.remove(inputs, 0), ArrayUtils.remove(outputs, 0),
                     m_execContext.createSubExecutionContext(0.0));
