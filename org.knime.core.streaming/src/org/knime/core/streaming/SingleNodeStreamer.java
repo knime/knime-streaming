@@ -49,6 +49,7 @@
 package org.knime.core.streaming;
 
 import java.util.concurrent.Callable;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -64,6 +65,9 @@ import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PartitionInfo;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortOutput;
+import org.knime.core.node.streamable.RowInput;
+import org.knime.core.node.streamable.RowOutput;
+import org.knime.core.node.streamable.RowOutput.OutputClosedException;
 import org.knime.core.node.streamable.StreamableOperator;
 import org.knime.core.node.streamable.StreamableOperatorInternals;
 import org.knime.core.node.util.CheckUtils;
@@ -177,15 +181,20 @@ final class SingleNodeStreamer {
                     }
                 }
 
-                for (int i = 0; i < outputs.length; i++) {
-                    outputs[i] = m_outputCaches[i].getPortOutput();
-                }
+                IntStream.range(0, outputs.length).forEach(i -> outputs[i] = m_outputCaches[i].getPortOutput());
 
                 final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
                 strop.loadInternals(streamInternals);
                 m_nnc.getNode().openFileStoreHandler(m_execContext);
-                strop.runFinal(ArrayUtils.remove(inputs, 0), ArrayUtils.remove(outputs, 0),
-                    m_execContext.createSubExecutionContext(0.0));
+                try {
+                    strop.runFinal(ArrayUtils.remove(inputs, 0), ArrayUtils.remove(outputs, 0),
+                        m_execContext.createSubExecutionContext(0.0));
+                } catch (OutputClosedException oce) {
+                    LOGGER.debug("Early stopping of streaming operator as consumers are done");
+                } finally {
+                    closeInputs(inputs);
+                    closeOutputs(outputs);
+                }
                 ((NonTableOutputCache)m_outputCaches[0]).setObject(FlowVariablePortObject.INSTANCE);
                 PortObject[] rawInput = Stream.of(m_upStreamCaches).map(
                     c -> c.getPortObjectMock()).toArray(PortObject[]::new);
@@ -220,5 +229,23 @@ final class SingleNodeStreamer {
             }
         }
 
+    }
+
+    /** Called after processing to close all outputs.
+     * @param outputs to be closed, non null.
+     */
+    private static void closeOutputs(final PortOutput[] outputs) throws InterruptedException {
+        for (int i = 0; i < outputs.length; i++) {
+            if (outputs[i] instanceof RowOutput) {
+                ((RowOutput)outputs[i]).close();
+            }
+        }
+    }
+
+    /** Called after processing to close all inputs
+     * @param inputs to be closed, non-null
+     */
+    private static void closeInputs(final PortInput[] inputs) {
+        Stream.of(inputs).filter(i -> i instanceof RowInput).map(i -> (RowInput)i).forEach(i -> i.close());
     }
 }

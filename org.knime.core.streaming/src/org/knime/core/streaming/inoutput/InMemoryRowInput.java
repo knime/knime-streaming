@@ -111,6 +111,7 @@ public final class InMemoryRowInput extends RowInput {
     /** {@inheritDoc} */
     @Override
     public void close() {
+        m_rowCache.closeConsumer(this);
         InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
     }
 

@@ -73,7 +73,7 @@ import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.ConnectionProgress;
 import org.knime.core.node.workflow.ConnectionProgressEvent;
 import org.knime.core.node.workflow.FlowObjectStack;
-import org.knime.core.node.workflow.SingleNodeContainer;
+import org.knime.core.streaming.SimpleStreamerNodeExecutionJob.NodeContainerCacheHandle;
 
 /**
  * (Non-)Cache for table ports. Caching of the data into a {@link BufferedDataTable} is done if
@@ -92,7 +92,11 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
     public static final int CHUNK_SIZE = Optional.ofNullable(
         Integer.getInteger("knime.core.streaming.chunksize")).orElse(50).intValue();
 
+    private NodeContainerCacheHandle m_ncCacheHandle;
+
     private final BitSet m_hasConsumedCurrentChunkBits;
+
+    private final BitSet m_closedConsumersBits;
 
     private final Condition m_acceptProduceCondition;
 
@@ -102,7 +106,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     private final ExecutionContext m_context;
 
-    private final boolean m_doStage;
+    private final boolean m_hasNonStreamableConsumer;
 
     private BufferedDataContainer m_stagingDataContainer;
 
@@ -125,21 +129,24 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     /**
      * New cache.
-     * @param nnc The associated node (used to query variables).
+     * @param ncCacheHandle The node container along with some common pool of output caches so that they all
+     * synchronize one when they can bail out as no more consumers consume
      * @param context to create BDT from in case a consumer needs full access.
      * @param nrStreamedConsumers Number of streaming consumers to be created - no data is accepted until all consumers
      *            have been created.
-     * @param doStage If the data is to be cached as a downstream node require full access.
+     * @param hasNonStreamableConsumer If the data is to be cached as a downstream node require full access.
      * @param isDiamondSource If node is branching (see member description for details).
      */
-    public InMemoryRowCache(final SingleNodeContainer nnc, final ExecutionContext context, final int nrStreamedConsumers,
-        final boolean doStage, final boolean isDiamondSource) {
-        super(CheckUtils.checkArgumentNotNull(nnc), DataTableSpec.class);
+    public InMemoryRowCache(final NodeContainerCacheHandle ncCacheHandle, final ExecutionContext context,
+        final int nrStreamedConsumers, final boolean hasNonStreamableConsumer, final boolean isDiamondSource) {
+        super(ncCacheHandle.getSingleNodeContainer(), DataTableSpec.class);
+        m_ncCacheHandle = ncCacheHandle;
         m_streamedConsumerCount = nrStreamedConsumers;
         m_context = CheckUtils.checkArgumentNotNull(context, "Exec Context must not be null");
-        m_doStage = doStage || isDiamondSource;
+        m_hasNonStreamableConsumer = hasNonStreamableConsumer;
         m_isDiamondSource = isDiamondSource;
         m_hasConsumedCurrentChunkBits = new BitSet(isDiamondSource ? 0 : m_streamedConsumerCount);
+        m_closedConsumersBits = new BitSet(isDiamondSource ? 0 : m_streamedConsumerCount);
         final ReentrantLock lock = getLock();
         m_acceptProduceCondition = lock.newCondition();
         m_requireConsumeCondition = lock.newCondition();
@@ -153,13 +160,17 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         lock.lock();
         try {
             super.setPortObjectSpec(spec);
-            if (m_doStage && m_stagedDataTable == null) { // m_stagedDataTable != null if set by setFully
+            if (shouldStageOuptut() && m_stagedDataTable == null) { // m_stagedDataTable != null if set by setFully
                 CheckUtils.checkState(m_stagingDataContainer == null, "Must be null at this time");
                 m_stagingDataContainer = m_context.createDataContainer(spec);
             }
         } finally {
             lock.unlock();
         }
+    }
+
+    private boolean shouldStageOuptut() {
+        return m_hasNonStreamableConsumer || m_isDiamondSource;
     }
 
     /** {@inheritDoc} */
@@ -180,7 +191,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 }
             } else {
                 BufferedDataTable stagedTable = waitForStagedTable();
-                InMemoryRowCache.fireProgressEvent(cc, false, stagedTable.getRowCount());
+                InMemoryRowCache.fireProgressEvent(cc, false, stagedTable.size());
                 return new PortObjectInput(stagedTable);
             }
         } finally {
@@ -251,10 +262,11 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      *
      * @param rows The rows to add, never null but possibly empty. Row count should not exceed {@link #CHUNK_SIZE}.
      * @param isLast If this chunk is the last chunk and no more rows are expected
+     * @return true if the producer can close the source because all streaming consumers are done (input closed)
      * @throws InterruptedException If interrupted while blocking.
      * @throws IllegalStateException If more rows are added while previous chunk was set to be the last one.
      */
-    public void addChunk(final List<DataRow> rows, final boolean isLast) throws InterruptedException {
+    boolean addChunk(final List<DataRow> rows, final boolean isLast) throws InterruptedException {
         CheckUtils.checkNotNull(rows, "Rows argument must not be null");
         // implication m_isLast --> isLast ---- can't reopen
         CheckUtils.checkState(!m_isLast || isLast, "Cannot re-open row cache - isLast flag was set previously");
@@ -266,22 +278,34 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
             CheckUtils.checkState(getPortObjectSpec() != null,
                 "Can't add rows to output as no spec was set -- computeFinalSpec probably returned null");
             if (m_isLast) {
-                return;
+                return false; // return value doesn't matter - but return value corresponds to the state of the consumer
             }
             while (m_currentChunk != null && !isCurrentChunkConsumed()) {
                 m_acceptProduceCondition.await();
             }
             m_hasConsumedCurrentChunkBits.clear();
+            m_hasConsumedCurrentChunkBits.or(m_closedConsumersBits);
+            // all consumers are streamable and have called the #closeConsumer method
+            // (e.g. a downstream row filter only accepting the first x rows)
+            // signal to the source that no more output needs to be generated (via exception)
+            boolean shouldCloseOutput = !m_hasNonStreamableConsumer
+                    && m_hasConsumedCurrentChunkBits.cardinality() >= m_streamedConsumerCount;
+            if (shouldCloseOutput) {
+                // can only close output if all other output caches (= ports) for that node are also done
+                shouldCloseOutput = m_ncCacheHandle.closeOutput(this);
+            }
             m_currentChunk = rows;
             m_isLast = isLast;
             if (m_stagingDataContainer != null) {
+                assert !shouldCloseOutput : String.format("Data needs to be staged but all consumers are streamable "
+                    + "and done (number threads waiting to lock: %d)", lock.getQueueLength());
                 for (DataRow r : rows) {
                     m_stagingDataContainer.addRowToTable(r);
                     if (Thread.interrupted()) {
                         throw new InterruptedException();
                     }
                 }
-                if (isLast) {
+                if (isLast || shouldCloseOutput) {
                     m_stagingDataContainer.close();
                     m_stagedDataTable = m_stagingDataContainer.getTable();
                     // update spec (this also contains the domain)
@@ -291,6 +315,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 }
             }
             m_requireConsumeCondition.signalAll();
+            return shouldCloseOutput;
         } finally {
             lock.unlock();
         }
@@ -310,13 +335,13 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         lock.lockInterruptibly();
         try {
             checkNotInUse();
-            if (m_doStage) {
+            if (m_hasNonStreamableConsumer) {
                 if (m_stagingDataContainer != null) {
                     // computeFinalSpec returned a non-null spec so output was initialized
                     // the final table will overrule and we can discard the (empty) container
                     m_stagingDataContainer.close();
                     final BufferedDataTable tempEmptyTable = m_stagingDataContainer.getTable();
-                    CheckUtils.checkState(tempEmptyTable.getRowCount() == 0, "Can't set full table as rows have been "
+                    CheckUtils.checkState(tempEmptyTable.size() == 0L, "Can't set full table as rows have been "
                         + "previously added using 'push'");
                     m_context.clearTable(tempEmptyTable);
                     m_stagingDataContainer = null;
@@ -347,7 +372,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      * @return The next chunk or null when done.
      * @throws InterruptedException Interrupted while waiting for next chunk.
      */
-    public List<DataRow> getChunk(final InMemoryRowInput consumer) throws InterruptedException {
+    List<DataRow> getChunk(final InMemoryRowInput consumer) throws InterruptedException {
         final int consumerID = consumer.getConsumerID();
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
@@ -370,6 +395,25 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * @param inMemoryRowInput
+     */
+    void closeConsumer(final InMemoryRowInput consumer) {
+        final int consumerID = consumer.getConsumerID();
+        final ReentrantLock lock = getLock();
+        lock.lock();
+        try {
+            m_hasConsumedCurrentChunkBits.set(consumerID);
+            m_closedConsumersBits.set(consumerID);
+            if (isCurrentChunkConsumed()) {
+                m_acceptProduceCondition.signalAll();
+            }
+        } finally {
+            lock.unlock();
+        }
+
     }
 
     private boolean isCurrentChunkConsumed() {

@@ -91,6 +91,7 @@ import org.knime.core.node.workflow.NodeExecutionJob;
 import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.NodeMessage;
 import org.knime.core.node.workflow.NodeMessage.Type;
+import org.knime.core.node.workflow.SingleNodeContainer;
 import org.knime.core.node.workflow.SubNodeContainer;
 import org.knime.core.node.workflow.WorkflowCreationHelper;
 import org.knime.core.node.workflow.WorkflowEvent;
@@ -237,7 +238,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         final Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches =
                 prepareConnectionCaches(wfm, allNodeContainers, execCreator);
 
-        final Map<NodeContainer, SingleNodeStreamer> createStreamers =
+        final Map<NodeContainer, SingleNodeStreamer> nodeToStreamerMap =
                 createStreamers(wfm, allNodeContainers, connectionCaches, execCreator);
 
         final List<Pair<NodeContainer, Future<NativeNodeContainerExecutionResult>>> nodeThreadList =
@@ -245,7 +246,8 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         final ExecutorCompletionService<NativeNodeContainerExecutionResult> completionService =
                 new ExecutorCompletionService<>(STREAMING_EXECUTOR_SERVICE);
 
-        for (Map.Entry<NodeContainer, SingleNodeStreamer> e : createStreamers.entrySet()) {
+        for (Map.Entry<NodeContainer, SingleNodeStreamer> e : nodeToStreamerMap.entrySet()) {
+            NodeContainer nc = e.getKey();
             nodeThreadList.add(Pair.create(e.getKey(), completionService.submit(e.getValue().newCallable())));
         }
 
@@ -323,6 +325,11 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             wfmExecResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
         }
         final boolean success = !(isFailed || isCanceled);
+        if (!success) {
+            // don't allow partial success - otherwise the user can re-run with half way executed flow but
+            // the green nodes have no output table in their output
+            wfmExecResult.getExecutionResultMap().values().stream().forEach(e -> e.setSuccess(false));
+        }
         wfmExecResult.setSuccess(success);
         SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(runContainer.getID());
         execResult.setWorkflowExecutionResult(wfmExecResult);
@@ -355,27 +362,28 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 throw new WrappedNodeExecutionStatusException(msg, newFailure(msg));
             }
             NativeNodeContainer nnc = (NativeNodeContainer)nc;
+            final NodeContainerCacheHandle ncCacheHandle = new NodeContainerCacheHandle(nnc);
             final boolean isDiamondStart = isDiamondStart(wfm, nnc);
             for (int op = 0; op < nc.getNrOutPorts(); op++) {
                 PortType portType = nc.getOutPort(op).getPortType();
                 final boolean isData = BufferedDataTable.TYPE.equals(portType)
                         || BufferedDataTable.TYPE_OPTIONAL.equals(portType);
                 int nrStreamedConsumers = 0;
-                boolean doStage = false;
+                boolean hasNonStreamableConsumer = false;
                 Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
                 for (ConnectionContainer cc : ccs) {
                     NodeID dest = cc.getDest();
                     int destPort = cc.getDestPort();
                     NativeNodeContainer destNode = wfm.getNodeContainer(dest, NativeNodeContainer.class, false);
                     if (destNode == null) { // could be a meta node or so -- assume false
-                        doStage = true;
+                        hasNonStreamableConsumer = true;
                     } else if (destPort == 0) {
                         assert !isData : "no data port at index 0";
                     } else {
                         if (isData && destNode.getNodeModel().getInputPortRoles()[destPort - 1].isStreamable()) {
                             nrStreamedConsumers += 1;
                         } else {
-                            doStage = true;
+                            hasNonStreamableConsumer = true;
                         }
                     }
                     ConnectionProgress p = new ConnectionProgress(nrStreamedConsumers > 0, isData ? "0" : "");
@@ -383,8 +391,9 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 }
                 AbstractOutputCache<? extends PortObjectSpec> outputCache;
                 if (isData) {
-                    outputCache = new InMemoryRowCache(nnc, execCreator.apply(nnc.getID()),
-                        nrStreamedConsumers, doStage, isDiamondStart);
+                    ncCacheHandle.incrementTotalCacheCounter();
+                    outputCache = new InMemoryRowCache(ncCacheHandle, execCreator.apply(nnc.getID()),
+                        nrStreamedConsumers, hasNonStreamableConsumer, isDiamondStart);
                 } else {
                     outputCache = new NonTableOutputCache(nnc);
                 }
@@ -424,6 +433,9 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         final ExecutionContextCreator execCreator) throws WrappedNodeExecutionStatusException {
         Map<NodeContainer, SingleNodeStreamer> resultMap = new LinkedHashMap<>();
         for (NodeContainer nc : allNodeContainers) {
+            if (nc.getNodeContainerState().isExecuted()) {
+                continue;
+            }
             final NativeNodeContainer nnc = (NativeNodeContainer)nc;
             final int nrIns = nnc.getNrInPorts();
             final int nrOuts = nnc.getNrOutPorts();
@@ -567,6 +579,45 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             }
             return ctx;
         }
+
+    }
+
+    /** A common synchronization object for all {@link InMemoryRowCache} objects that are associated with the node's
+     * output ports. The consumers of all outputs need to be done (RowInput#close called) before the node's execution
+     * thread can early-abort. */
+    public static final class NodeContainerCacheHandle {
+        private final SingleNodeContainer m_nc;
+        private final Set<InMemoryRowCache> m_closedCachesSet;
+        private int m_totalOutputCount;
+
+        NodeContainerCacheHandle(final SingleNodeContainer nc) {
+            m_nc = CheckUtils.checkArgumentNotNull(nc);
+            m_closedCachesSet = new HashSet<>();
+        }
+
+        /** @return the node container. */
+        public SingleNodeContainer getSingleNodeContainer() {
+            return m_nc;
+        }
+        /** Increment the number of expected output caches. Called before execution starts. */
+        void incrementTotalCacheCounter() {
+            assert m_closedCachesSet.isEmpty() : "Already closing outputs, can't increment total count";
+            m_totalOutputCount += 1;
+        }
+
+        /** Called by the {@link InMemoryRowCache} after all its consumers are closed. It remembers the completed
+         * output caches. If it's the last output cache to complete it will return <code>true</code> indicating
+         * that any new row added the output can terminate via an
+         * {@link org.knime.core.node.streamable.RowOutput.OutputClosedException}.
+         * @param rowCache The output cache that has been closed.
+         * @return <code>true</code> if all output caches are closed */
+        public synchronized boolean closeOutput(final InMemoryRowCache rowCache) {
+            m_closedCachesSet.add(rowCache);
+            final int outputsClosedCount = m_closedCachesSet.size();
+            CheckUtils.checkState(outputsClosedCount <= m_totalOutputCount, "Can't close more outputs than available");
+            return outputsClosedCount == m_totalOutputCount;
+        }
+
 
     }
 
