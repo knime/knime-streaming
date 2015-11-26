@@ -177,7 +177,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
      */
     private synchronized static void checkAutoDiscardStreamWFM(final WorkflowEvent e) {
         if (WorkflowEvent.Type.NODE_REMOVED.equals(e.getType())) {
-            if (streamParentWFM.getNodeContainers().isEmpty()) {
+            if ((streamParentWFM != null) && streamParentWFM.getNodeContainers().isEmpty()) {
                 LOGGER.debug("Discarding streamed node parent workflow project");
                 WorkflowManager.ROOT.removeProject(streamParentWFM.getID());
                 streamParentWFM = null;
