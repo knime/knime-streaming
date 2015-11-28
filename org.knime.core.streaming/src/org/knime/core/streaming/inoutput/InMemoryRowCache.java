@@ -335,7 +335,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         lock.lockInterruptibly();
         try {
             checkNotInUse();
-            if (m_hasNonStreamableConsumer) {
+            if (shouldStageOuptut()) {
                 if (m_stagingDataContainer != null) {
                     // computeFinalSpec returned a non-null spec so output was initialized
                     // the final table will overrule and we can discard the (empty) container
