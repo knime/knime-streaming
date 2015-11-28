@@ -75,9 +75,14 @@ public final class InMemoryRowOutput extends RowOutput {
     /** {@inheritDoc} */
     @Override
     public void push(final DataRow row) throws InterruptedException {
+        pushInternal(row, false);
+    }
+
+    private void pushInternal(final DataRow row, final boolean mayClose) throws InterruptedException {
         m_rows.add(row);
         if (m_rows.size() == InMemoryRowCache.CHUNK_SIZE) {
-            if (m_rowCache.addChunk(m_rows, false)) {
+            if (m_rowCache.addChunk(m_rows, false, mayClose)) {
+                assert mayClose : "Can't close output as flag is false";
                 throw new OutputClosedException();
             }
             m_rows = new ArrayList<>(InMemoryRowCache.CHUNK_SIZE);
@@ -94,7 +99,7 @@ public final class InMemoryRowOutput extends RowOutput {
     @Override
     public void close() {
         try {
-            m_rowCache.addChunk(m_rows, true);
+            m_rowCache.addChunk(m_rows, true, /* ignored when 2nd arg ist true */ false);
             m_rows = Collections.emptyList();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);

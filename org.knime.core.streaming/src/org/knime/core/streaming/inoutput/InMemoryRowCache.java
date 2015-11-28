@@ -262,11 +262,14 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      *
      * @param rows The rows to add, never null but possibly empty. Row count should not exceed {@link #CHUNK_SIZE}.
      * @param isLast If this chunk is the last chunk and no more rows are expected
+     * @param mayCloseOutput <code>true</code if this output and all others attached to the node may be closed in case
+     *          there are no consumers waiting for further input
      * @return true if the producer can close the source because all streaming consumers are done (input closed)
      * @throws InterruptedException If interrupted while blocking.
      * @throws IllegalStateException If more rows are added while previous chunk was set to be the last one.
      */
-    boolean addChunk(final List<DataRow> rows, final boolean isLast) throws InterruptedException {
+    boolean addChunk(final List<DataRow> rows, final boolean isLast,
+        final boolean mayCloseOutput) throws InterruptedException {
         CheckUtils.checkNotNull(rows, "Rows argument must not be null");
         // implication m_isLast --> isLast ---- can't reopen
         CheckUtils.checkState(!m_isLast || isLast, "Cannot re-open row cache - isLast flag was set previously");
@@ -288,7 +291,8 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
             // all consumers are streamable and have called the #closeConsumer method
             // (e.g. a downstream row filter only accepting the first x rows)
             // signal to the source that no more output needs to be generated (via exception)
-            boolean shouldCloseOutput = !m_hasNonStreamableConsumer
+            // TODO this is currently harcoded to false
+            boolean shouldCloseOutput = mayCloseOutput && !m_hasNonStreamableConsumer
                     && m_hasConsumedCurrentChunkBits.cardinality() >= m_streamedConsumerCount;
             if (shouldCloseOutput) {
                 // can only close output if all other output caches (= ports) for that node are also done
@@ -354,12 +358,12 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
             RowIterator it = table.iterator();
             while (it.hasNext()) {
                 if (rows.size() >= CHUNK_SIZE) {
-                    addChunk(rows, false);
+                    addChunk(rows, false, false);
                     rows = new ArrayList<DataRow>(CHUNK_SIZE);
                 }
                 rows.add(it.next());
             }
-            addChunk(rows, true);
+            addChunk(rows, true, false);
         } finally {
             lock.unlock();
         }
