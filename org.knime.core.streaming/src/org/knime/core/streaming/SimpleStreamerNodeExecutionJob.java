@@ -145,6 +145,11 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     /** The thread performing {@link #mainExecute()} - will be interrupted when canceled. */
     private Thread m_mainThread;
 
+    /** Cancelation flag - unfortunately m_mainThread.interrupt() isn't enough and honestly we didn't get to
+     * the bottom of why. Cancellation is tested in
+     * org.knime.core.node.workflow.BugAP5712_CloseWhileStreaming.testSaveLoadWhileExecuting(). */
+    private boolean m_isCanceled;
+
     /** Creates new job.
      * @param nc Node to stream, must be a {@link SubNodeContainer} (fails later on otherwise).
      * @param data Its input data.
@@ -213,7 +218,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             NodeContainerExecutionResult execResult = mainExecuteInternal(runContainer, execCreator);
             origContainer.loadExecutionResult(execResult, new ExecutionMonitor(), new LoadResult("Stream-Exec-Result"));
             return execResult;
-        } catch (CanceledExecutionException e1) {
+        } catch (CanceledExecutionException | InterruptedException e1) {
             origContainer.setNodeMessage(NodeMessage.newWarning("Canceled"));
             return NodeContainerExecutionStatus.newFailure("Canceled");
         } catch (InvalidSettingsException | IOException | LockFailedException e1) {
@@ -253,24 +258,21 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
 
         String failMessage = null;
         boolean isFailed = false;
-        boolean isCanceled = false;
+        boolean isCanceled = m_isCanceled;
 
-        for (int i = 0; i < nodeThreadList.size(); i++) {
+        for (int i = 0; i < nodeThreadList.size() && !isCanceled && !isFailed; i++) {
             try {
                 NativeNodeContainerExecutionResult result = completionService.take().get();
                 if (!result.isSuccess()) {
                     // error handling done below
                     isFailed = true;
-                    break;
                 }
             } catch (InterruptedException e) {
                 isCanceled = true;
-                break;
             } catch (ExecutionException e) {
                 // shouldn't happen as the streamer doesn't throw an exception - but for sake of completeness and
                 // to please the compiler...
                 isFailed = true;
-                break;
             }
         }
 
@@ -477,6 +479,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     protected boolean cancel() {
         Thread mainThread = m_mainThread;
         if (mainThread != null) {
+            m_isCanceled = true;
             mainThread.interrupt();
             return true;
         }
