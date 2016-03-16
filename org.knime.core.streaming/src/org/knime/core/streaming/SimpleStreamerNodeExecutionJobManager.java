@@ -70,6 +70,7 @@ import org.knime.core.node.workflow.SubNodeContainer;
  * Job Manager for a streaming sub node.
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  * @author Michael Berthold, KNIME.com, Zurich, Switzerland
+ * @since 3.3
  */
 public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecutionJobManager {
 

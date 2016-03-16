@@ -54,6 +54,7 @@ import org.knime.core.node.workflow.NodeExecutionJobManagerFactory;
  * Creates streaming job manager instances.
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  * @author Michael Berthold, KNIME.com, Zurich, Switzerland
+ * @since 3.3
  */
 public class SimpleStreamerNodeExecutionJobManagerFactory implements NodeExecutionJobManagerFactory {
 

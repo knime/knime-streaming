@@ -114,6 +114,7 @@ import org.knime.core.util.Pair;
  * Job that streams a {@link SubNodeContainer}. Only streaming, no parallelization.
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
+ * @since 3.3
  */
 public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
 
