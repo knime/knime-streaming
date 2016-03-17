@@ -52,7 +52,6 @@ import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -74,6 +73,7 @@ import org.knime.core.node.workflow.ConnectionProgress;
 import org.knime.core.node.workflow.ConnectionProgressEvent;
 import org.knime.core.node.workflow.FlowObjectStack;
 import org.knime.core.streaming.SimpleStreamerNodeExecutionJob.NodeContainerCacheHandle;
+import org.knime.core.streaming.SimpleStreamerNodeExecutionSettings;
 
 /**
  * (Non-)Cache for table ports. Caching of the data into a {@link BufferedDataTable} is done if
@@ -81,16 +81,12 @@ import org.knime.core.streaming.SimpleStreamerNodeExecutionJob.NodeContainerCach
  * <li>any of the connected downstream nodes is not streamable or</li>
  * <li>the producing node forks into multiple branches that merge downstream again ('diamond').</li>
  * </ul>
- * In case the data can be streamed the cache holds a chunk of data ({@value #CHUNK_SIZE} rows) and does not accept new
+ * In case the data can be streamed the cache holds a chunk of data and does not accept new
  * data until all consumers have fetched the current chunk.
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
  */
 public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
-
-    /** Number of rows making up a chunk - this always needs to fit in memory. */
-    public static final int CHUNK_SIZE = Optional.ofNullable(
-        Integer.getInteger("knime.core.streaming.chunksize")).orElse(50).intValue();
 
     private NodeContainerCacheHandle m_ncCacheHandle;
 
@@ -120,6 +116,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     private int m_nrStreamConsumersCreated;
 
+    private final int m_chunkSize;
     /**
      * A node is a diamond source if it has multiple output connections (from the same or different ports), which
      * downstream merge again. This can either happen directly at the connected successor or many layers downstream.
@@ -127,20 +124,23 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      */
     private boolean m_isDiamondSource;
 
+
     /**
      * New cache.
      * @param ncCacheHandle The node container along with some common pool of output caches so that they all
      * synchronize one when they can bail out as no more consumers consume
      * @param context to create BDT from in case a consumer needs full access.
+     * @param settings the settings
      * @param nrStreamedConsumers Number of streaming consumers to be created - no data is accepted until all consumers
      *            have been created.
      * @param hasNonStreamableConsumer If the data is to be cached as a downstream node require full access.
      * @param isDiamondSource If node is branching (see member description for details).
      */
     public InMemoryRowCache(final NodeContainerCacheHandle ncCacheHandle, final ExecutionContext context,
-        final int nrStreamedConsumers, final boolean hasNonStreamableConsumer, final boolean isDiamondSource) {
+        final SimpleStreamerNodeExecutionSettings settings, final int nrStreamedConsumers, final boolean hasNonStreamableConsumer, final boolean isDiamondSource) {
         super(ncCacheHandle.getSingleNodeContainer(), DataTableSpec.class);
         m_ncCacheHandle = ncCacheHandle;
+        m_chunkSize = settings.getChunkSize();
         m_streamedConsumerCount = nrStreamedConsumers;
         m_context = CheckUtils.checkArgumentNotNull(context, "Exec Context must not be null");
         m_hasNonStreamableConsumer = hasNonStreamableConsumer;
@@ -354,12 +354,12 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 m_requireFullDataConsumeCondition.signalAll();
             }
             setPortObjectSpec(table.getDataTableSpec());
-            List<DataRow> rows = new ArrayList<DataRow>(CHUNK_SIZE);
+            List<DataRow> rows = new ArrayList<DataRow>(m_chunkSize);
             RowIterator it = table.iterator();
             while (it.hasNext()) {
-                if (rows.size() >= CHUNK_SIZE) {
+                if (rows.size() >= m_chunkSize) {
                     addChunk(rows, false, false);
-                    rows = new ArrayList<DataRow>(CHUNK_SIZE);
+                    rows = new ArrayList<DataRow>(m_chunkSize);
                 }
                 rows.add(it.next());
             }
@@ -418,6 +418,11 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
             lock.unlock();
         }
 
+    }
+
+    /** @return the chunkSize as per settings. */
+    int getChunkSize() {
+        return m_chunkSize;
     }
 
     private boolean isCurrentChunkConsumed() {

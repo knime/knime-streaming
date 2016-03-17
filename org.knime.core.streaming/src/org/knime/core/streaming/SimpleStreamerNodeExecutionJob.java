@@ -150,12 +150,17 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
      * org.knime.core.node.workflow.BugAP5712_CloseWhileStreaming.testSaveLoadWhileExecuting(). */
     private boolean m_isCanceled;
 
+    private final SimpleStreamerNodeExecutionSettings m_settings;
+
     /** Creates new job.
      * @param nc Node to stream, must be a {@link SubNodeContainer} (fails later on otherwise).
      * @param data Its input data.
+     * @param settings ...
      */
-    public SimpleStreamerNodeExecutionJob(final NodeContainer nc, final PortObject[] data) {
+    SimpleStreamerNodeExecutionJob(final NodeContainer nc, final PortObject[] data,
+        final SimpleStreamerNodeExecutionSettings settings) {
         super(nc, data);
+        m_settings = CheckUtils.checkArgumentNotNull(settings);
     }
 
     /** {@inheritDoc}
@@ -395,7 +400,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 if (isData) {
                     ncCacheHandle.incrementTotalCacheCounter();
                     outputCache = new InMemoryRowCache(ncCacheHandle, execCreator.apply(nnc.getID()),
-                        nrStreamedConsumers, hasNonStreamableConsumer, isDiamondStart);
+                        m_settings, nrStreamedConsumers, hasNonStreamableConsumer, isDiamondStart);
                 } else {
                     outputCache = new NonTableOutputCache(nnc);
                 }

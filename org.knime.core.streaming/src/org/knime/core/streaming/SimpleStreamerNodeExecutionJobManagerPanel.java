@@ -44,66 +44,76 @@
  * ---------------------------------------------------------------------
  *
  * History
- *   Mar 10, 2015 (wiswedel): created
+ *   Mar 17, 2016 (wiswedel): created
  */
-package org.knime.core.streaming.inoutput;
+package org.knime.core.streaming;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.awt.BorderLayout;
 
-import org.knime.core.data.DataRow;
-import org.knime.core.node.BufferedDataTable;
-import org.knime.core.node.streamable.RowOutput;
+import javax.swing.JComponent;
+import javax.swing.JFormattedTextField;
+import javax.swing.JLabel;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
+
+import org.knime.core.node.InvalidSettingsException;
+import org.knime.core.node.NodeSettingsRO;
+import org.knime.core.node.NodeSettingsWO;
+import org.knime.core.node.port.PortObjectSpec;
+import org.knime.core.node.util.ViewUtils;
+import org.knime.core.node.workflow.NodeExecutionJobManagerPanel;
 
 /**
- * {@link RowOutput} for table ports. It passes the data into a {@link InMemoryRowCache}, which does all the
- * synchronization and sends it off to downstream nodes.
  *
- * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
+ * @author wiswedel
  */
-public final class InMemoryRowOutput extends RowOutput {
+final class SimpleStreamerNodeExecutionJobManagerPanel extends NodeExecutionJobManagerPanel {
 
-    private final InMemoryRowCache m_rowCache;
-    private List<DataRow> m_rows;
+    private final JSpinner m_chunkSizeSpinner;
 
-    InMemoryRowOutput(final InMemoryRowCache rowCache) {
-        m_rowCache = rowCache;
-        m_rows = new ArrayList<DataRow>(rowCache.getChunkSize());
+    /**
+     * @param chunkSizeSpinner
+     */
+    SimpleStreamerNodeExecutionJobManagerPanel() {
+        setLayout(new BorderLayout());
+        m_chunkSizeSpinner = new JSpinner(new SpinnerNumberModel(
+            SimpleStreamerNodeExecutionSettings.CHUNK_SIZE_DEFAULT, 1, Integer.MAX_VALUE, 10));
+        JComponent editor = m_chunkSizeSpinner.getEditor();
+        JFormattedTextField jftf = ((JSpinner.DefaultEditor) editor).getTextField();
+        jftf.setColumns(8);
+        JLabel label = new JLabel("Chunk Size  ");
+        add(ViewUtils.getInFlowLayout(label, m_chunkSizeSpinner), BorderLayout.NORTH);
+        String descriptionText =
+                "<html><body><p>Determines the size of a batch that is collected at each node before <br/>"
+                + "it is handed off to the downstream node. Choosing larger values will <br/>"
+                + "reduce synchronization (and hence yield better runtime),whereas <br/>"
+                + "small values will make sure that less data is in transit/memory.<br/>"
+                + "For ordinary data (consisting only of strings and numbers) larger<br/>"
+                + "values are preferred.</p><body></html>";
+        JLabel description = new JLabel(descriptionText);
+        add(description, BorderLayout.CENTER);
     }
 
     /** {@inheritDoc} */
     @Override
-    public void push(final DataRow row) throws InterruptedException {
-        pushInternal(row, false);
-    }
-
-    private void pushInternal(final DataRow row, final boolean mayClose) throws InterruptedException {
-        m_rows.add(row);
-        if (m_rows.size() == m_rowCache.getChunkSize()) {
-            if (m_rowCache.addChunk(m_rows, false, mayClose)) {
-                assert mayClose : "Can't close output as flag is false";
-                throw new OutputClosedException();
-            }
-            m_rows = new ArrayList<>(m_rowCache.getChunkSize());
-        }
+    public void saveSettings(final NodeSettingsWO settings) throws InvalidSettingsException {
+        SimpleStreamerNodeExecutionSettings c = new SimpleStreamerNodeExecutionSettings();
+        c.setChunkSize((int)m_chunkSizeSpinner.getValue());
+        c.saveSettings(settings);
     }
 
     /** {@inheritDoc} */
     @Override
-    public void setFully(final BufferedDataTable table) throws InterruptedException {
-        m_rowCache.setFully(table);
+    public void loadSettings(final NodeSettingsRO settings) {
+        SimpleStreamerNodeExecutionSettings c = new SimpleStreamerNodeExecutionSettings();
+        c.loadSettingsInDialog(settings);
+        m_chunkSizeSpinner.setValue(c.getChunkSize());
     }
 
     /** {@inheritDoc} */
     @Override
-    public void close() {
-        try {
-            m_rowCache.addChunk(m_rows, true, /* ignored when 2nd arg ist true */ false);
-            m_rows = Collections.emptyList();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+    public void updateInputSpecs(final PortObjectSpec[] inSpecs) {
+
     }
 
 }

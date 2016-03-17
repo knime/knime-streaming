@@ -50,15 +50,20 @@ package org.knime.core.streaming;
 
 import java.net.URL;
 
+import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeModel;
+import org.knime.core.node.NodeSettingsRO;
+import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.PartitionInfo;
 import org.knime.core.node.workflow.AbstractNodeExecutionJobManager;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContainer;
+import org.knime.core.node.workflow.NodeContainer.NodeContainerSettings.SplitType;
 import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
+import org.knime.core.node.workflow.NodeExecutionJobManagerPanel;
 
 /**
  * Job Manager for a streaming sub node.
@@ -73,10 +78,12 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     private static final URL STREAMING_RED =
             SimpleStreamerNodeExecutionJobManager.class.getResource("icons/streaming_red.png");
 
+    private SimpleStreamerNodeExecutionSettings m_settings = new SimpleStreamerNodeExecutionSettings();
+
     /** {@inheritDoc} */
     @Override
     public NodeExecutionJob submitJob(final NodeContainer nc, final PortObject[] data) {
-        final SimpleStreamerNodeExecutionJob job = new SimpleStreamerNodeExecutionJob(nc, data);
+        final SimpleStreamerNodeExecutionJob job = new SimpleStreamerNodeExecutionJob(nc, data, m_settings);
         SimpleStreamerNodeExecutionJob.STREAMING_EXECUTOR_SERVICE.execute(new Runnable() {
             @Override
             public void run() {
@@ -158,6 +165,28 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     @Override
     public URL getIconForWorkflow() {
         return getClass().getResource("icons/streaming_flow.png");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public NodeExecutionJobManagerPanel getSettingsPanelComponent(final SplitType nodeSplitType) {
+        return new SimpleStreamerNodeExecutionJobManagerPanel();
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void load(final NodeSettingsRO settings) throws InvalidSettingsException {
+        SimpleStreamerNodeExecutionSettings c = new SimpleStreamerNodeExecutionSettings();
+        c.loadSettingsInModel(settings);
+        m_settings = c;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public void save(final NodeSettingsWO settings) {
+        m_settings.saveSettings(settings);
     }
 
 }

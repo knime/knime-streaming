@@ -44,66 +44,59 @@
  * ---------------------------------------------------------------------
  *
  * History
- *   Mar 10, 2015 (wiswedel): created
+ *   Mar 17, 2016 (wiswedel): created
  */
-package org.knime.core.streaming.inoutput;
+package org.knime.core.streaming;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.Optional;
 
-import org.knime.core.data.DataRow;
-import org.knime.core.node.BufferedDataTable;
-import org.knime.core.node.streamable.RowOutput;
+import org.knime.core.node.InvalidSettingsException;
+import org.knime.core.node.NodeSettingsRO;
+import org.knime.core.node.NodeSettingsWO;
+import org.knime.core.node.util.CheckUtils;
 
 /**
- * {@link RowOutput} for table ports. It passes the data into a {@link InMemoryRowCache}, which does all the
- * synchronization and sends it off to downstream nodes.
+ * Proxy object that represents the job manager's configuration.
  *
  * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
+ * @noreference This class is not intended to be referenced by clients.
  */
-public final class InMemoryRowOutput extends RowOutput {
+public final class SimpleStreamerNodeExecutionSettings {
 
-    private final InMemoryRowCache m_rowCache;
-    private List<DataRow> m_rows;
+    static final int CHUNK_SIZE_DEFAULT = Optional.ofNullable(
+        Integer.getInteger("knime.core.streaming.chunksize")).orElse(50).intValue();
 
-    InMemoryRowOutput(final InMemoryRowCache rowCache) {
-        m_rowCache = rowCache;
-        m_rows = new ArrayList<DataRow>(rowCache.getChunkSize());
+    private int m_chunkSize = CHUNK_SIZE_DEFAULT;
+
+    void saveSettings(final NodeSettingsWO settings) {
+        settings.addInt("chunk-size", m_chunkSize);
     }
 
-    /** {@inheritDoc} */
-    @Override
-    public void push(final DataRow row) throws InterruptedException {
-        pushInternal(row, false);
+    void loadSettingsInModel(final NodeSettingsRO settings) throws InvalidSettingsException {
+        // added in 3.2
+        int chunkSize = settings.getInt("chunk-size", CHUNK_SIZE_DEFAULT);
+        CheckUtils.checkSetting(chunkSize > 0, "Chunk size must be larger than 0: %d", chunkSize);
+        m_chunkSize = chunkSize;
     }
 
-    private void pushInternal(final DataRow row, final boolean mayClose) throws InterruptedException {
-        m_rows.add(row);
-        if (m_rows.size() == m_rowCache.getChunkSize()) {
-            if (m_rowCache.addChunk(m_rows, false, mayClose)) {
-                assert mayClose : "Can't close output as flag is false";
-                throw new OutputClosedException();
-            }
-            m_rows = new ArrayList<>(m_rowCache.getChunkSize());
+
+    void loadSettingsInDialog(final NodeSettingsRO settings) {
+        int chunkSize = settings.getInt("chunk-size", CHUNK_SIZE_DEFAULT);
+        if (chunkSize <= 0) {
+            chunkSize = CHUNK_SIZE_DEFAULT;
         }
+        m_chunkSize = chunkSize;
     }
 
-    /** {@inheritDoc} */
-    @Override
-    public void setFully(final BufferedDataTable table) throws InterruptedException {
-        m_rowCache.setFully(table);
+    /** @param chunkSize the chunkSize to set */
+    void setChunkSize(final int chunkSize) throws InvalidSettingsException {
+        CheckUtils.checkSetting(chunkSize > 0, "Chunk size must be larger 0: %d", chunkSize);
+        m_chunkSize = chunkSize;
     }
 
-    /** {@inheritDoc} */
-    @Override
-    public void close() {
-        try {
-            m_rowCache.addChunk(m_rows, true, /* ignored when 2nd arg ist true */ false);
-            m_rows = Collections.emptyList();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+    /** @return the chunkSize */
+    public int getChunkSize() {
+        return m_chunkSize;
     }
 
 }
