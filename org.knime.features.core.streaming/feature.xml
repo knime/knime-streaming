@@ -2,7 +2,7 @@
 <feature
       id="org.knime.features.core.streaming"
       label="KNIME Streaming Execution (Beta)"
-      version="3.1.0.qualifier"
+      version="3.2.0.qualifier"
       provider-name="KNIME GmbH, Konstanz, Germany"
       plugin="org.knime.core.streaming">
 
