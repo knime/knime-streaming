@@ -53,6 +53,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.knime.core.data.DataRow;
+import org.knime.core.node.BufferedDataContainer;
+import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeLogger;
@@ -61,7 +64,10 @@ import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObject;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObjectSpec;
+import org.knime.core.node.streamable.DataTableRowInput;
 import org.knime.core.node.streamable.InputPortRole;
+import org.knime.core.node.streamable.MergeOperator;
+import org.knime.core.node.streamable.OutputPortRole;
 import org.knime.core.node.streamable.PartitionInfo;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortOutput;
@@ -142,16 +148,67 @@ final class SingleNodeStreamer {
                     flowObjectStacks[i] = stack;
                 }
 
-                StreamableOperatorInternals streamInternals = nM.createInitialStreamableOperatorInternals();
-                if (nM.iterate(streamInternals)) {
-                    throw new Exception("Streaming iteration not implemented");
-                }
 
                 final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
                     inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
                 }
                 final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
+
+                //can be null
+                MergeOperator mergeOperator = nM.createMergeOperator();
+
+                //never be null
+                final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
+
+                //pre-iterate if necessary
+                StreamableOperatorInternals streamInternals = nM.createInitialStreamableOperatorInternals();
+                BufferedDataTable[] stagedTables = null;
+                while (nM.iterate(streamInternals)) {
+                    //create staged data tables (only for the streamable inputs)
+                    if (stagedTables == null) {
+                        stagedTables = new BufferedDataTable[inputs.length - 1];
+                        for (int i = 0; i < stagedTables.length; i++) {
+                            if (inputPortRoles[i + 1].isStreamable()) {
+                                RowInput rowInput = (RowInput)inputs[i + 1];
+                                BufferedDataContainer cont =
+                                    m_execContext.createDataContainer(rowInput.getDataTableSpec());
+                                DataRow r = null;
+                                while ((r = rowInput.poll()) != null) {
+                                    cont.addRowToTable(r);
+                                }
+                                cont.close();
+                                stagedTables[i] = cont.getTable();
+                            } else {
+                                stagedTables[i] = null;
+                            }
+                        }
+                    }
+
+                    //(re-)create streamable staged inputs
+                    for (int i = 0; i < stagedTables.length; i++) {
+                        if (stagedTables[i] != null) {
+                            inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
+                        }
+                    }
+                    strop.loadInternals(streamInternals);
+                    strop.runIntermediate(ArrayUtils.remove(inputs, 0), m_execContext);
+                    closeInputs(inputs);
+                    streamInternals = strop.saveInternals();
+
+                    if(mergeOperator != null) {
+                        streamInternals = mergeOperator.mergeIntermediate(new StreamableOperatorInternals[] {streamInternals});
+                    }
+                }
+                if (stagedTables != null) {
+                    //(re-)create streamable staged inputs for the last time
+                    //they might have possibly been closed within the iterate-loop above
+                    for (int i = 0; i < stagedTables.length; i++) {
+                        if (stagedTables[i] != null) {
+                            inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
+                        }
+                    }
+                }
 
                 boolean isConfigureOK;
 
@@ -181,20 +238,58 @@ final class SingleNodeStreamer {
                     }
                 }
 
+                /* prepare outputs */
                 IntStream.range(0, outputs.length).forEach(i -> outputs[i] = m_outputCaches[i].getPortOutput());
+                //if all inputs a non-distributed, all outputs are provided here
+                //otherwise only distributed outputs are non-null (the others are processed further
+                //below by calling the StreamableOperator#finishStreamableExecution-method
+                //see also documentation of the StreamableOperator#runFinal-method
+                PortOutput[] distrOutputs = new PortOutput[outputs.length - 1]; //without flow variable port
+                PortOutput[] nonDistrOutputs = new PortOutput[outputs.length - 1]; //without flow variable port
+                if (IntStream.range(1, inputPortRoles.length).anyMatch(i -> inputPortRoles[i].isDistributable())) {
+                    //at least one input is distributable
+                    OutputPortRole[] outputPortRoles = nM.getOutputPortRoles();
+                    IntStream.range(1, outputs.length).forEach(i -> {
+                        if (outputPortRoles[i - 1].isDistributable()) {
+                            distrOutputs[i - 1] = outputs[i];
+                        } else {
+                            nonDistrOutputs[i - 1] = outputs[i];
+                        }
+                    });
+                } else {
+                    //no input is distributable
+                    IntStream.range(0, distrOutputs.length).forEach(i -> {
+                        distrOutputs[i] = outputs[i + 1];
+                        nonDistrOutputs[i] = null;
+                    });
+                }
 
-                final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
+
                 strop.loadInternals(streamInternals);
                 m_nnc.getNode().openFileStoreHandler(m_execContext);
                 try {
-                    strop.runFinal(ArrayUtils.remove(inputs, 0), ArrayUtils.remove(outputs, 0),
+                    strop.runFinal(ArrayUtils.remove(inputs, 0), distrOutputs,
                         m_execContext.createSubExecutionContext(0.0));
                 } catch (OutputClosedException oce) {
                     LOGGER.debug("Early stopping of streaming operator as consumers are done");
                 } finally {
                     closeInputs(inputs);
-                    closeOutputs(outputs);
+                    closeOutputs(distrOutputs);
+                    streamInternals = strop.saveInternals();
                 }
+
+                //run merge operation if available
+                if (mergeOperator != null) {
+                    streamInternals = mergeOperator.mergeFinal(new StreamableOperatorInternals[]{streamInternals});
+                }
+
+                //if at least one input is distributable and a merge operator has been created this method must be implemented
+                if (mergeOperator != null) {
+                    nM.finishStreamableExecution(streamInternals, m_execContext.createSubExecutionContext(0.0),
+                        nonDistrOutputs);
+                }
+                closeOutputs(nonDistrOutputs);
+
                 ((NonTableOutputCache)m_outputCaches[0]).setObject(FlowVariablePortObject.INSTANCE);
                 PortObject[] rawInput = Stream.of(m_upStreamCaches).map(
                     c -> c.getPortObjectMock()).toArray(PortObject[]::new);
@@ -236,7 +331,7 @@ final class SingleNodeStreamer {
      */
     private static void closeOutputs(final PortOutput[] outputs) throws InterruptedException {
         for (int i = 0; i < outputs.length; i++) {
-            if (outputs[i] instanceof RowOutput) {
+            if (outputs[i] != null && outputs[i] instanceof RowOutput) {
                 ((RowOutput)outputs[i]).close();
             }
         }
