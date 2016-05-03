@@ -88,6 +88,7 @@ import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResul
 import org.knime.core.node.workflow.execresult.NodeExecutionResult;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
+import org.knime.core.streaming.inoutput.StagedTableRowInput;
 
 /**
  * The creator of new {@link Callable} to process a node's execution. So far each node is run by a single thread.
@@ -155,37 +156,44 @@ final class SingleNodeStreamer {
                 }
                 final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
 
-                //can be null
+                // can be null
                 MergeOperator mergeOperator = nM.createMergeOperator();
 
-                //never be null
+                // never be null
                 final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
 
-                //pre-iterate if necessary
+                // pre-iterate if necessary
                 StreamableOperatorInternals streamInternals = nM.createInitialStreamableOperatorInternals();
                 BufferedDataTable[] stagedTables = null;
                 while (nM.iterate(streamInternals)) {
-                    //create staged data tables (only for the streamable inputs)
+                    // create staged data tables (only for the streamable inputs)
                     if (stagedTables == null) {
                         stagedTables = new BufferedDataTable[inputs.length - 1];
                         for (int i = 0; i < stagedTables.length; i++) {
                             if (inputPortRoles[i + 1].isStreamable()) {
                                 RowInput rowInput = (RowInput)inputs[i + 1];
-                                BufferedDataContainer cont =
-                                    m_execContext.createDataContainer(rowInput.getDataTableSpec());
-                                DataRow r = null;
-                                while ((r = rowInput.poll()) != null) {
-                                    cont.addRowToTable(r);
+                                BufferedDataTable stagedTable;
+                                if (rowInput instanceof StagedTableRowInput) {
+                                    stagedTable = ((StagedTableRowInput)rowInput).getTable();
+                                } else {
+                                    BufferedDataContainer cont =
+                                        m_execContext.createDataContainer(rowInput.getDataTableSpec());
+                                    DataRow r = null;
+                                    while ((r = rowInput.poll()) != null) {
+                                        cont.addRowToTable(r);
+                                        m_execContext.checkCanceled();
+                                    }
+                                    cont.close();
+                                    stagedTable = cont.getTable();
                                 }
-                                cont.close();
-                                stagedTables[i] = cont.getTable();
+                                stagedTables[i] = stagedTable;
                             } else {
                                 stagedTables[i] = null;
                             }
                         }
                     }
 
-                    //(re-)create streamable staged inputs
+                    // (re-)create streamable staged inputs
                     for (int i = 0; i < stagedTables.length; i++) {
                         if (stagedTables[i] != null) {
                             inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
@@ -196,13 +204,13 @@ final class SingleNodeStreamer {
                     closeInputs(inputs);
                     streamInternals = strop.saveInternals();
 
-                    if(mergeOperator != null) {
+                    if (mergeOperator != null) {
                         streamInternals = mergeOperator.mergeIntermediate(new StreamableOperatorInternals[] {streamInternals});
                     }
                 }
                 if (stagedTables != null) {
-                    //(re-)create streamable staged inputs for the last time
-                    //they might have possibly been closed within the iterate-loop above
+                    // (re-)create streamable staged inputs for the last time
+                    // they might have possibly been closed within the iterate-loop above
                     for (int i = 0; i < stagedTables.length; i++) {
                         if (stagedTables[i] != null) {
                             inputs[i + 1] = new DataTableRowInput(stagedTables[i]);

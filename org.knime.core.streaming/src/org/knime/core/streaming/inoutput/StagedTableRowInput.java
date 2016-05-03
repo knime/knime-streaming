@@ -49,7 +49,7 @@
 package org.knime.core.streaming.inoutput;
 
 import org.knime.core.data.DataRow;
-import org.knime.core.data.DataTable;
+import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.streamable.DataTableRowInput;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
@@ -66,12 +66,15 @@ public final class StagedTableRowInput extends DataTableRowInput {
 
     private long m_counter;
 
+    private final BufferedDataTable m_table;
+
     /** Inits input.
      * @param table The table to read from.
      * @param cc The connection to send events to (only for display in the UI).
      */
-    StagedTableRowInput(final DataTable table, final ConnectionContainer cc) {
+    StagedTableRowInput(final BufferedDataTable table, final ConnectionContainer cc) {
         super(table);
+        m_table = table;
         m_cc = CheckUtils.checkArgumentNotNull(cc, "Arg must not be null");
     }
 
@@ -89,6 +92,12 @@ public final class StagedTableRowInput extends DataTableRowInput {
     public void close() {
         InMemoryRowCache.fireProgressEvent(m_cc, false, m_counter);
         super.close();
+    }
+
+    /** @return the table
+     * @noreference This method is not intended to be referenced by clients. */
+    public BufferedDataTable getTable() {
+        return m_table;
     }
 
 }

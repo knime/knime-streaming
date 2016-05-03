@@ -91,8 +91,8 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         lock.lock();
         try {
             CheckUtils.checkState(m_portObject == null, "Port object has been set previously (not null) \"%s\" vs. "
-                + "\"%s\" - objects are %s identical", m_portObject, portObject,
-                m_portObject == portObject);
+                + "\"%s\" - objects are%s identical", m_portObject, portObject,
+                (m_portObject == portObject ? "": " not"));
             m_portObject = CheckUtils.checkArgumentNotNull(portObject, "Port Object must not be null");
             setPortObjectSpec(getSpecClass().cast(portObject.getSpec()));
             m_portObjectInputNotSetCondition.signalAll();
