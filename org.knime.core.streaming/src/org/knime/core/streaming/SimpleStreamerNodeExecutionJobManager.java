@@ -64,6 +64,7 @@ import org.knime.core.node.workflow.NodeContainer.NodeContainerSettings.SplitTyp
 import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
 import org.knime.core.node.workflow.NodeExecutionJobManagerPanel;
+import org.knime.core.node.workflow.SubNodeContainer;
 
 /**
  * Job Manager for a streaming sub node.
@@ -187,6 +188,14 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     @Override
     public void save(final NodeSettingsWO settings) {
         m_settings.saveSettings(settings);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean canExecute(final NodeContainer nc) {
+        return nc instanceof SubNodeContainer;
     }
 
 }
