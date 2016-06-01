@@ -201,7 +201,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     protected NodeContainerExecutionStatus mainExecute() {
         NodeContainer nodeContainer = getNodeContainer();
         if (!(nodeContainer instanceof SubNodeContainer)) {
-            String message = "Streaming exeuction only available for subnodes";
+            String message = "Streaming execution is only available for wrapped metanodes.";
             nodeContainer.setNodeMessage(new NodeMessage(Type.ERROR, message));
             LOGGER.error(message);
             return NodeContainerExecutionStatus.FAILURE;
