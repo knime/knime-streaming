@@ -53,6 +53,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.knime.core.data.DataRow;
+import org.knime.core.node.BufferedDataContainer;
+import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeLogger;
@@ -61,6 +64,7 @@ import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObject;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObjectSpec;
+import org.knime.core.node.streamable.DataTableRowInput;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.MergeOperator;
 import org.knime.core.node.streamable.OutputPortRole;
@@ -84,7 +88,6 @@ import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResul
 import org.knime.core.node.workflow.execresult.NodeExecutionResult;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
-import org.knime.core.streaming.inoutput.RepeatableRowInput;
 import org.knime.core.streaming.inoutput.StagedTableRowInput;
 
 /**
@@ -161,47 +164,56 @@ final class SingleNodeStreamer {
 
                 // pre-iterate if necessary
                 StreamableOperatorInternals streamInternals = nM.createInitialStreamableOperatorInternals();
-                RepeatableRowInput[] repeatableRowInputs = null;
+                BufferedDataTable[] stagedTables = null;
                 while (nM.iterate(streamInternals)) {
-                    // create repeatable row inputs (only for the streamable inputs)
-                    if (repeatableRowInputs == null) {
-                        repeatableRowInputs = new RepeatableRowInput[inputs.length - 1];
-                        for (int i = 0; i < repeatableRowInputs.length; i++) {
+                    // create staged data tables (only for the streamable inputs)
+                    if (stagedTables == null) {
+                        stagedTables = new BufferedDataTable[inputs.length - 1];
+                        for (int i = 0; i < stagedTables.length; i++) {
                             if (inputPortRoles[i + 1].isStreamable()) {
                                 RowInput rowInput = (RowInput)inputs[i + 1];
+                                BufferedDataTable stagedTable;
                                 if (rowInput instanceof StagedTableRowInput) {
-                                    repeatableRowInputs[i] =
-                                        new RepeatableRowInput(((StagedTableRowInput)rowInput).getTable());
+                                    stagedTable = ((StagedTableRowInput)rowInput).getTable();
                                 } else {
-                                    repeatableRowInputs[i] = new RepeatableRowInput(rowInput, m_execContext);
+                                    BufferedDataContainer cont =
+                                        m_execContext.createDataContainer(rowInput.getDataTableSpec());
+                                    DataRow r = null;
+                                    while ((r = rowInput.poll()) != null) {
+                                        cont.addRowToTable(r);
+                                        m_execContext.checkCanceled();
+                                    }
+                                    cont.close();
+                                    stagedTable = cont.getTable();
                                 }
-                                inputs[i + 1] = repeatableRowInputs[i];
+                                stagedTables[i] = stagedTable;
                             } else {
-                                repeatableRowInputs[i] = null;
+                                stagedTables[i] = null;
                             }
                         }
                     }
 
-                    // reset streamed repeatable inputs
-                    for (int i = 0; i < repeatableRowInputs.length; i++) {
-                        if (repeatableRowInputs[i] != null) {
-                            repeatableRowInputs[i].reset();
+                    // (re-)create streamable staged inputs
+                    for (int i = 0; i < stagedTables.length; i++) {
+                        if (stagedTables[i] != null) {
+                            inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
                         }
                     }
                     strop.loadInternals(streamInternals);
                     strop.runIntermediate(ArrayUtils.remove(inputs, 0), m_execContext);
-                    closeInputs(inputs, false);
+                    closeInputs(inputs);
                     streamInternals = strop.saveInternals();
 
                     if (mergeOperator != null) {
                         streamInternals = mergeOperator.mergeIntermediate(new StreamableOperatorInternals[] {streamInternals});
                     }
                 }
-                if (repeatableRowInputs != null) {
-                    // reset streamed repeatable inputs for the last time
-                    for (int i = 0; i < repeatableRowInputs.length; i++) {
-                        if (repeatableRowInputs[i] != null) {
-                            repeatableRowInputs[i].reset();
+                if (stagedTables != null) {
+                    // (re-)create streamable staged inputs for the last time
+                    // they might have possibly been closed within the iterate-loop above
+                    for (int i = 0; i < stagedTables.length; i++) {
+                        if (stagedTables[i] != null) {
+                            inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
                         }
                     }
                 }
@@ -269,7 +281,7 @@ final class SingleNodeStreamer {
                 } catch (OutputClosedException oce) {
                     LOGGER.debug("Early stopping of streaming operator as consumers are done");
                 } finally {
-                    closeInputs(inputs, true);
+                    closeInputs(inputs);
                     closeOutputs(distrOutputs);
                     streamInternals = strop.saveInternals();
                 }
@@ -335,16 +347,8 @@ final class SingleNodeStreamer {
 
     /** Called after processing to close all inputs
      * @param inputs to be closed, non-null
-     * @param if true, the row inputs wrapped by a {@link RepeatableRowInput} will be closed, too
      */
-    private static void closeInputs(final PortInput[] inputs, final boolean closeRepeatableRowInputs) {
-        for(PortInput pi : inputs) {
-            if(pi != null && pi instanceof RowInput) {
-                ((RowInput)pi).close();
-                if(closeRepeatableRowInputs && pi instanceof RepeatableRowInput) {
-                    ((RepeatableRowInput)pi).getWrappedRowInput().close();
-                }
-            }
-        }
+    private static void closeInputs(final PortInput[] inputs) {
+        Stream.of(inputs).filter(i -> i instanceof RowInput).map(i -> (RowInput)i).forEach(i -> i.close());
     }
 }
