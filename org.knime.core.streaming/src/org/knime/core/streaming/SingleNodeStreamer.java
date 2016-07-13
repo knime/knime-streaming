@@ -172,10 +172,10 @@ final class SingleNodeStreamer {
                         for (int i = 0; i < stagedTables.length; i++) {
                             if (inputPortRoles[i + 1].isStreamable()) {
                                 RowInput rowInput = (RowInput)inputs[i + 1];
-                                BufferedDataTable stagedTable;
+                                BufferedDataTable stagedTable = null;
                                 if (rowInput instanceof StagedTableRowInput) {
                                     stagedTable = ((StagedTableRowInput)rowInput).getTable();
-                                } else {
+                                } else if (rowInput != null) { // port can be optional
                                     BufferedDataContainer cont =
                                         m_execContext.createDataContainer(rowInput.getDataTableSpec());
                                     DataRow r = null;
