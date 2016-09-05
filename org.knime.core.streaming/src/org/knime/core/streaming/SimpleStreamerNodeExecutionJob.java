@@ -441,7 +441,9 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         Map<NodeContainer, SingleNodeStreamer> resultMap = new LinkedHashMap<>();
         for (NodeContainer nc : allNodeContainers) {
             if (nc.getNodeContainerState().isExecuted()) {
-                continue;
+                final String msg = String.format("Wrapped Metanode must not contain executed"
+                    + " nodes in order to be streamed (\"%s\" is executed)", nc.getNameWithID());
+                throw new WrappedNodeExecutionStatusException(msg, newFailure(msg));
             }
             final NativeNodeContainer nnc = (NativeNodeContainer)nc;
             final int nrIns = nnc.getNrInPorts();
