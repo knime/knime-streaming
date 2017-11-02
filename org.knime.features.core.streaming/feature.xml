@@ -3,7 +3,7 @@
       id="org.knime.features.core.streaming"
       label="KNIME Streaming Execution (Beta)"
       version="3.5.0.qualifier"
-      provider-name="KNIME GmbH, Konstanz, Germany"
+      provider-name="KNIME AG, Zurich, Switzerland"
       plugin="org.knime.core.streaming">
 
    <description url="http://www.knime.org/">
@@ -16,7 +16,7 @@ not been adopted yet and falls back to table-by-table execution.
    </description>
 
    <copyright>
-      Copyright by KNIME GmbH, Konstanz, Germany
+      Copyright by KNIME AG, Zurich, Switzerland
    </copyright>
 
    <license>

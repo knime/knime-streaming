@@ -1,7 +1,7 @@
 /*
  * ------------------------------------------------------------------------
  *
- *  Copyright by KNIME GmbH, Konstanz, Germany
+ *  Copyright by KNIME AG, Zurich, Switzerland
  *  Website: http://www.knime.com; Email: contact@knime.com
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -52,8 +52,8 @@ import org.knime.core.node.workflow.NodeExecutionJobManagerFactory;
 
 /**
  * Creates streaming job manager instances.
- * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
- * @author Michael Berthold, KNIME.com, Zurich, Switzerland
+ * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
+ * @author Michael Berthold, KNIME AG, Zurich, Switzerland
  */
 public class SimpleStreamerNodeExecutionJobManagerFactory implements NodeExecutionJobManagerFactory {
 

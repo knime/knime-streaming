@@ -1,7 +1,7 @@
 /*
  * ------------------------------------------------------------------------
  *
- *  Copyright by KNIME GmbH, Konstanz, Germany
+ *  Copyright by KNIME AG, Zurich, Switzerland
  *  Website: http://www.knime.com; Email: contact@knime.com
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -60,7 +60,7 @@ import org.knime.core.node.streamable.RowOutput;
  * {@link RowOutput} for table ports. It passes the data into a {@link InMemoryRowCache}, which does all the
  * synchronization and sends it off to downstream nodes.
  *
- * @author Bernd Wiswedel, KNIME.com, Zurich, Switzerland
+ * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
  */
 public final class InMemoryRowOutput extends RowOutput {
 
