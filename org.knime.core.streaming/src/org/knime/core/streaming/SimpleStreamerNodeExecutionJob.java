@@ -81,6 +81,7 @@ import org.knime.core.node.exec.SandboxedNodeCreator.SandboxedNode;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.PortType;
+import org.knime.core.node.streamable.SharedContainerPortObject;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.ConnectionProgress;
@@ -107,6 +108,7 @@ import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.InMemoryRowCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
 import org.knime.core.streaming.inoutput.NullOutputCache;
+import org.knime.core.streaming.inoutput.SharedContainerOutputCache;
 import org.knime.core.util.LockFailedException;
 import org.knime.core.util.Pair;
 
@@ -375,6 +377,8 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 PortType portType = nc.getOutPort(op).getPortType();
                 final boolean isData = BufferedDataTable.TYPE.equals(portType)
                         || BufferedDataTable.TYPE_OPTIONAL.equals(portType);
+                final boolean isSharedPortObject = SharedContainerPortObject.TYPE.equals(portType) ||
+                        SharedContainerPortObject.TYPE_OPTIONAL.equals(portType);
                 int nrStreamedConsumers = 0;
                 boolean hasNonStreamableConsumer = false;
                 Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
@@ -401,6 +405,9 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                     ncCacheHandle.incrementTotalCacheCounter();
                     outputCache = new InMemoryRowCache(ncCacheHandle, execCreator.apply(nnc.getID()),
                         m_settings, nrStreamedConsumers, hasNonStreamableConsumer, isDiamondStart);
+                } else if(isSharedPortObject) {
+                    //SharedContainerPortObject are streamable and managed by the {@link SharedContainerOutputCache}
+                    outputCache = new SharedContainerOutputCache(nnc);
                 } else {
                     outputCache = new NonTableOutputCache(nnc);
                 }
