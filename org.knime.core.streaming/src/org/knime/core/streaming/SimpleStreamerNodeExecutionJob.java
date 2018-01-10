@@ -82,6 +82,7 @@ import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.PortType;
 import org.knime.core.node.streamable.SharedContainerPortObject;
+import org.knime.core.node.streamable.SharedContainerPortObjectSpec;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.ConnectionProgress;
@@ -421,7 +422,14 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         // assert Thread.holdsLock(wfm.getWorkflowMutex());
         final HashSet<NodeID> visitedDownstreamNodes = new HashSet<>();
         final HashSet<NodeID> downstreamNodes = new HashSet<>();
+        int outPortIdx = 0;
         for (ConnectionContainer cc : wfm.getOutgoingConnectionsFor(nnc.getID())) {
+            // Remove connections holding SharedContainerPortObject from diamond source detection.
+            // Those connections cannot cause deadlocks due to the fact that the SharedContainerPortObject is
+            // accessible at all times.
+            if(nnc.getOutPort(outPortIdx).getPortObjectSpec() instanceof SharedContainerPortObjectSpec) {
+                continue;
+            }
             downstreamNodes.clear();
             collectDepthFirst(wfm, cc, downstreamNodes);
             int oldSize = visitedDownstreamNodes.size();
@@ -430,6 +438,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 // nnc is branching down-stream and those branches are merged again later
                 return true;
             }
+            outPortIdx++;
         }
         return false;
     }
