@@ -48,9 +48,15 @@
  */
 package org.knime.core.streaming;
 
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.knime.core.node.InvalidSettingsException;
+import org.knime.core.node.NodeLogger;
 import org.knime.core.node.NodeModel;
 import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
@@ -79,16 +85,36 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     private static final URL STREAMING_RED =
             SimpleStreamerNodeExecutionJobManager.class.getResource("icons/streaming_red.png");
 
+    private static final NodeLogger LOGGER = NodeLogger.getLogger(SimpleStreamerNodeExecutionJobManager.class);
+
+    private static final UncaughtExceptionHandler UNCAUGHT_EXCEPTION_HANDLER = new UncaughtExceptionHandler() {
+        @Override
+        public void uncaughtException(final Thread t, final Throwable e) {
+            LOGGER.error("Uncaught " + e.getClass().getSimpleName() + " in thread " + t.getName(), e);
+        }
+    };
+
+    static final ExecutorService STREAMING_EXECUTOR_SERVICE = Executors.newCachedThreadPool(new ThreadFactory() {
+        final AtomicInteger THREAD_ID = new AtomicInteger();
+
+        @Override
+        public Thread newThread(final Runnable r) {
+            Thread t = new Thread(r, "Streaming-" + THREAD_ID.getAndIncrement() + "-IDLE");
+            t.setUncaughtExceptionHandler(UNCAUGHT_EXCEPTION_HANDLER);
+            return t;
+        }
+    });
+
     private SimpleStreamerNodeExecutionSettings m_settings = new SimpleStreamerNodeExecutionSettings();
 
     /** {@inheritDoc} */
     @Override
     public NodeExecutionJob submitJob(final NodeContainer nc, final PortObject[] data) {
         final SimpleStreamerNodeExecutionJob job = new SimpleStreamerNodeExecutionJob(nc, data, m_settings);
-        SimpleStreamerNodeExecutionJob.STREAMING_EXECUTOR_SERVICE.execute(new Runnable() {
+        STREAMING_EXECUTOR_SERVICE.execute(new Runnable() {
             @Override
             public void run() {
-                SingleNodeStreamer.updateThreadName("Master");
+//                SingleNodeStreamer.updateThreadName("Master");
                 NodeContext.pushContext(nc);
                 try {
                     job.run();

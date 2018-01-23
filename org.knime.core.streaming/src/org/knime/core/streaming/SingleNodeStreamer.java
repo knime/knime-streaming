@@ -49,46 +49,22 @@
 package org.knime.core.streaming;
 
 import java.util.concurrent.Callable;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import org.apache.commons.lang3.ArrayUtils;
-import org.knime.core.data.DataRow;
-import org.knime.core.node.BufferedDataContainer;
-import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.ExecutionContext;
-import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeLogger;
-import org.knime.core.node.NodeModel;
-import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
-import org.knime.core.node.port.flowvariable.FlowVariablePortObject;
-import org.knime.core.node.port.flowvariable.FlowVariablePortObjectSpec;
-import org.knime.core.node.streamable.DataTableRowInput;
-import org.knime.core.node.streamable.InputPortRole;
-import org.knime.core.node.streamable.MergeOperator;
-import org.knime.core.node.streamable.OutputPortRole;
-import org.knime.core.node.streamable.PartitionInfo;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortOutput;
 import org.knime.core.node.streamable.RowInput;
 import org.knime.core.node.streamable.RowOutput;
-import org.knime.core.node.streamable.RowOutput.OutputClosedException;
-import org.knime.core.node.streamable.StreamableOperator;
-import org.knime.core.node.streamable.StreamableOperatorInternals;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.FlowObjectStack;
-import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContext;
-import org.knime.core.node.workflow.NodeMessage;
-import org.knime.core.node.workflow.WorkflowLock;
-import org.knime.core.node.workflow.WorkflowManager;
-import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResult;
-import org.knime.core.node.workflow.execresult.NodeExecutionResult;
+import org.knime.core.node.workflow.NodeExecutionJob;
+import org.knime.core.node.workflow.SingleNodeContainer;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
-import org.knime.core.streaming.inoutput.NonTableOutputCache;
-import org.knime.core.streaming.inoutput.StagedTableRowInput;
 
 /**
  * The creator of new {@link Callable} to process a node's execution. So far each node is run by a single thread.
@@ -99,239 +75,56 @@ final class SingleNodeStreamer {
 
     private static final NodeLogger LOGGER = NodeLogger.getLogger(SingleNodeStreamer.class);
 
-    private final NativeNodeContainer m_nnc;
+    private final SingleNodeContainer m_snc;
     private final AbstractOutputCache[] m_outputCaches;
     private final AbstractOutputCache[] m_upStreamCaches;
     private final ExecutionContext m_execContext;
 
     /**
-     * @param nnc The node to execute, not null.
+     * @param snc The node to execute, not null.
      * @param execContext TODO
      * @param outputCaches TODO
      */
-    SingleNodeStreamer(final NativeNodeContainer nnc, final ExecutionContext execContext,
+    SingleNodeStreamer(final SingleNodeContainer snc, final ExecutionContext execContext,
         final AbstractOutputCache[] outputCaches, final AbstractOutputCache[] upStreamCaches) {
         m_execContext = CheckUtils.checkArgumentNotNull(execContext, "Arg must not be null");
-        m_nnc = CheckUtils.checkArgumentNotNull(nnc, "Arg must not be null");
+        m_snc = CheckUtils.checkArgumentNotNull(snc, "Arg must not be null");
         m_outputCaches = CheckUtils.checkArgumentNotNull(outputCaches, "Arg must not be null");
         m_upStreamCaches = CheckUtils.checkArgumentNotNull(upStreamCaches, "Arg must not be null");
     }
 
-    Callable<NativeNodeContainerExecutionResult> newCallable() {
-        return new SingleNodeStreamerCallable();
+    NodeExecutionJob submitJob() {
+        updateThreadName(m_snc.getNameWithID());
+        NodeContext.pushContext(m_snc);
+        final PortInput[] inputs = new PortInput[m_upStreamCaches.length];
+        final PortOutput[] outputs = new PortOutput[m_outputCaches.length];
+        try {
+            for (int i = 0; i < m_upStreamCaches.length; i++) {
+                final ConnectionContainer inCC = m_snc.getParent().getIncomingConnectionFor(m_snc.getID(), i);
+                inputs[i] = m_upStreamCaches[i].getPortInput(m_snc.getInputPortRoles()[i], inCC);
+                final FlowObjectStack stack = m_upStreamCaches[i].getFlowObjectStack(m_snc.getInputPortRoles()[i]);
+            }
+
+            final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
+            for (int i = 0; i < m_upStreamCaches.length; i++) {
+                inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
+            }
+            return m_snc.findJobManager().submitJob(m_snc, inputs, outputs);
+        } catch (InterruptedException e) {
+            // downstream error - ignore here
+            LOGGER.debugWithFormat("interrupt received for \"%s\"- canceling streaming execution",
+                m_snc.getNameWithID());
+            return null;
+        } finally {
+            NodeContext.removeLastContext();
+            updateThreadName("IDLE");
+        }
     }
 
     static void updateThreadName(final String nameSuffix) {
         String name = Thread.currentThread().getName();
         name = name.replaceAll("^(Streaming-\\d+).*", "$1-" + nameSuffix);
         Thread.currentThread().setName(name);
-    }
-
-    final class SingleNodeStreamerCallable implements Callable<NativeNodeContainerExecutionResult> {
-
-        @Override
-        public NativeNodeContainerExecutionResult call() {
-            updateThreadName(m_nnc.getNameWithID());
-            NodeContext.pushContext(m_nnc);
-            final PortInput[] inputs = new PortInput[m_upStreamCaches.length];
-            final PortOutput[] outputs = new PortOutput[m_outputCaches.length];
-            try {
-                final WorkflowManager parent = m_nnc.getParent();
-                final NodeModel nM = m_nnc.getNodeModel();
-                final InputPortRole[] inputPortRoles = ArrayUtils.add(
-                    nM.getInputPortRoles(), 0, InputPortRole.NONDISTRIBUTED_NONSTREAMABLE);
-
-                final FlowObjectStack[] flowObjectStacks = new FlowObjectStack[m_upStreamCaches.length];
-                for (int i = 0; i < m_upStreamCaches.length; i++) {
-                    final ConnectionContainer inCC = parent.getIncomingConnectionFor(m_nnc.getID(), i);
-                    inputs[i] = m_upStreamCaches[i].getPortInput(inputPortRoles[i], inCC);
-                    final FlowObjectStack stack = m_upStreamCaches[i].getFlowObjectStack(inputPortRoles[i]);
-                    flowObjectStacks[i] = stack;
-                }
-
-
-                final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
-                for (int i = 0; i < m_upStreamCaches.length; i++) {
-                    inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
-                }
-                final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
-
-                // can be null
-                MergeOperator mergeOperator = nM.createMergeOperator();
-
-                // never be null
-                final StreamableOperator strop = nM.createStreamableOperator(new PartitionInfo(0, 1), inSpecsNoFlowPort);
-
-                // pre-iterate if necessary
-                StreamableOperatorInternals streamInternals = nM.createInitialStreamableOperatorInternals();
-                BufferedDataTable[] stagedTables = null;
-                while (nM.iterate(streamInternals)) {
-                    // create staged data tables (only for the streamable inputs)
-                    if (stagedTables == null) {
-                        stagedTables = new BufferedDataTable[inputs.length - 1];
-                        for (int i = 0; i < stagedTables.length; i++) {
-                            if (inputPortRoles[i + 1].isStreamable()) {
-                                RowInput rowInput = (RowInput)inputs[i + 1];
-                                BufferedDataTable stagedTable = null;
-                                if (rowInput instanceof StagedTableRowInput) {
-                                    stagedTable = ((StagedTableRowInput)rowInput).getTable();
-                                } else if (rowInput != null) { // port can be optional
-                                    BufferedDataContainer cont =
-                                        m_execContext.createDataContainer(rowInput.getDataTableSpec());
-                                    DataRow r = null;
-                                    while ((r = rowInput.poll()) != null) {
-                                        cont.addRowToTable(r);
-                                        m_execContext.checkCanceled();
-                                    }
-                                    cont.close();
-                                    stagedTable = cont.getTable();
-                                }
-                                stagedTables[i] = stagedTable;
-                            } else {
-                                stagedTables[i] = null;
-                            }
-                        }
-                    }
-
-                    // (re-)create streamable staged inputs
-                    for (int i = 0; i < stagedTables.length; i++) {
-                        if (stagedTables[i] != null) {
-                            inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
-                        }
-                    }
-                    strop.loadInternals(streamInternals);
-                    strop.runIntermediate(ArrayUtils.remove(inputs, 0), m_execContext);
-                    closeInputs(inputs);
-                    streamInternals = strop.saveInternals();
-
-                    if (mergeOperator != null) {
-                        streamInternals = mergeOperator.mergeIntermediate(new StreamableOperatorInternals[] {streamInternals});
-                    }
-                }
-                if (stagedTables != null) {
-                    // (re-)create streamable staged inputs for the last time
-                    // they might have possibly been closed within the iterate-loop above
-                    for (int i = 0; i < stagedTables.length; i++) {
-                        if (stagedTables[i] != null) {
-                            inputs[i + 1] = new DataTableRowInput(stagedTables[i]);
-                        }
-                    }
-                }
-
-                boolean isConfigureOK;
-
-                try (WorkflowLock lock = m_nnc.getParent().lock()) {
-                    m_nnc.getParent().createAndSetFlowObjectStackFor(m_nnc, flowObjectStacks);
-                    // need a final call to configure in order to propagate flow variables into the configuration
-                    //
-                    // this potentially has race conditions with streamed inports - it's not deterministic if an
-                    // upstream node has published all flow variables when this method gets call. It's deterministic
-                    // for non-streamable ports as their port objects are already queried/available (unless a node
-                    // pushes flow variables after setting the result)
-                    isConfigureOK = m_nnc.callNodeConfigure(inSpecs, true);
-                }
-
-                CheckUtils.checkSetting(isConfigureOK, "Configuration failed");
-
-                PortObjectSpec[] outSpecsNoFlowPort = nM.computeFinalOutputSpecs(streamInternals, inSpecsNoFlowPort);
-                if (outSpecsNoFlowPort != null) {
-                    m_outputCaches[0].setPortObjectSpec(FlowVariablePortObjectSpec.INSTANCE);
-                    CheckUtils.checkState(outSpecsNoFlowPort.length == m_nnc.getNrOutPorts() - 1, "Wrong number of "
-                        + "output ports: got %d, expected %d", outSpecsNoFlowPort.length, m_nnc.getNrOutPorts() - 1);
-                    for (int i = 0; i < outSpecsNoFlowPort.length; i++) {
-                        final PortObjectSpec s = outSpecsNoFlowPort[i];
-                        if (s != null) {
-                            m_outputCaches[i + 1].setPortObjectSpec(s);
-                        }
-                    }
-                }
-
-                /* prepare outputs */
-                IntStream.range(0, outputs.length).forEach(i -> outputs[i] = m_outputCaches[i].getPortOutput());
-                //if all inputs a non-distributed, all outputs are provided here
-                //otherwise only distributed outputs are non-null (the others are processed further
-                //below by calling the StreamableOperator#finishStreamableExecution-method
-                //see also documentation of the StreamableOperator#runFinal-method
-                PortOutput[] distrOutputs = new PortOutput[outputs.length - 1]; //without flow variable port
-                PortOutput[] nonDistrOutputs = new PortOutput[outputs.length - 1]; //without flow variable port
-                if (IntStream.range(1, inputPortRoles.length).anyMatch(i -> inputPortRoles[i].isDistributable())) {
-                    //at least one input is distributable
-                    OutputPortRole[] outputPortRoles = nM.getOutputPortRoles();
-                    IntStream.range(1, outputs.length).forEach(i -> {
-                        if (outputPortRoles[i - 1].isDistributable()) {
-                            distrOutputs[i - 1] = outputs[i];
-                        } else {
-                            nonDistrOutputs[i - 1] = outputs[i];
-                        }
-                    });
-                } else {
-                    //no input is distributable
-                    IntStream.range(0, distrOutputs.length).forEach(i -> {
-                        distrOutputs[i] = outputs[i + 1];
-                        nonDistrOutputs[i] = null;
-                    });
-                }
-
-
-                strop.loadInternals(streamInternals);
-                m_nnc.getNode().openFileStoreHandler(m_execContext);
-                try {
-                    strop.runFinal(ArrayUtils.remove(inputs, 0), distrOutputs,
-                        m_execContext.createSubExecutionContext(0.0));
-                } catch (OutputClosedException oce) {
-                    LOGGER.debug("Early stopping of streaming operator as consumers are done");
-                } finally {
-                    closeInputs(inputs);
-                    closeOutputs(distrOutputs);
-                    streamInternals = strop.saveInternals();
-                }
-
-                //run merge operation if available
-                if (mergeOperator != null) {
-                    streamInternals = mergeOperator.mergeFinal(new StreamableOperatorInternals[]{streamInternals});
-                }
-
-                //if at least one input is distributable and a merge operator has been created this method must be implemented
-                if (mergeOperator != null) {
-                    nM.finishStreamableExecution(streamInternals, m_execContext.createSubExecutionContext(0.0),
-                        nonDistrOutputs);
-                }
-                closeOutputs(nonDistrOutputs);
-
-                ((NonTableOutputCache)m_outputCaches[0]).setObject(FlowVariablePortObject.INSTANCE);
-                PortObject[] rawInput = Stream.of(m_upStreamCaches).map(
-                    c -> c.getPortObjectMock()).toArray(PortObject[]::new);
-                PortObject[] rawOutput = Stream.of(m_outputCaches).map(
-                    c -> c.getPortObjectMock()).toArray(PortObject[]::new);
-                m_nnc.getNode().assignInternalHeldObjects(rawInput, null, m_execContext, rawOutput);
-                m_execContext.setMessage("Creating execution result");
-                NativeNodeContainerExecutionResult executionResult =
-                        m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0));
-                executionResult.setSuccess(true);
-                return executionResult;
-            } catch (Exception e) {
-                NativeNodeContainerExecutionResult r = new NativeNodeContainerExecutionResult();
-                r.setNodeExecutionResult(new NodeExecutionResult());
-                if (e instanceof InterruptedException) {
-                    // downstream error - ignore here
-                    LOGGER.debugWithFormat("interrupt received for \"%s\"- canceling streaming execution",
-                        m_nnc.getNameWithID());
-                } else if (e instanceof InvalidSettingsException) {
-                    LOGGER.warn(e.getMessage(), e);
-                    r.setMessage(NodeMessage.newWarning(e.getMessage()));
-                } else {
-                    String error = "(" + e.getClass().getSimpleName() + "): " + e.getMessage();
-                    LOGGER.error(error, e);
-                    r.setMessage(NodeMessage.newError(e.getMessage()));
-                }
-                r.setSuccess(false);
-                return r;
-            } finally {
-                NodeContext.removeLastContext();
-                updateThreadName("IDLE");
-            }
-        }
-
     }
 
     /** Called after processing to close all outputs.
