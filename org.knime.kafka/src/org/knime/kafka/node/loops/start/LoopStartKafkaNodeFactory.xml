@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<knimeNode xmlns="http://knime.org/node/v2.10" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://knime.org/node/v2.10 http://knime.org/node/v2.10"
+	type="LoopStart" icon="loop_start_kafka.png">
+	<name>Kafka Consumer Loop Start</name>
+	<shortDescription>
+		Allows to iteratively poll batches of messages from Kafka and to process them.
+	</shortDescription>
+	<fullDescription>
+		<intro>
+		In each iteration another batch of messages is consumed from Kafka and processed.
+		</intro>
+		<tab name="Settings">
+			<option name="Client ID">
+				An id string to pass to the server when making requests. The purpose of this is to
+				be able to track the source of requests beyond just ip/port by allowing a logical
+				application name to be included in server-side request logging.
+			</option>
+			<option name="Group ID">
+				A unique string that identifies the consumer group this consumer belongs to. 
+			</option>
+			<option name="Poll timeout (ms)">
+				The time, in milliseconds, spent waiting in poll if data is not available in the buffer.
+	            If 0, returns immediately with any records that are currently available in the buffer.
+			</option>
+			<option name="Max empty polls (-1 for infinite)">
+				Defines after how many successive empty polls the node is allowed to finish its execution.
+				<br/>
+				If the value is set to -1, this loop will never terminate. In this case the relevant
+				timeouts should be adapted in order to reduce overhead due to re-connecting and rebalancing.
+			</option>
+			<option name="Topics">
+				<p>
+				A pattern or list of topics the consumer has to subscribe to.
+				</p>
+				<p>
+				A pattern has to be a regular expression as defined 
+				<a href="https://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html">here</a>.
+				The topics list has to be in the form <tt>topic1,topic2,...</tt>.
+				</p>
+			</option>
+			<option name="Topic is pattern">
+				If this option is selected, the value of topics will be treated as a pattern, and
+				as a list otherwise.
+			</option>
+			<option name="Append topic column">
+				If this option is selected, an additional column is added to the output table
+				containing information about the name of the topic the message/row originates
+				from.
+			</option>
+			<option name="Convert message to JSON">
+				If this option is selected the consumed messages are converted from String
+				to JSON.
+			</option>
+			<option name="Ignore history">
+				Automatically skips all unprocessed messages. 
+			</option>
+			<option name="Batch size">
+				The size of each batch, i.e., number of rows in the output table.
+			</option>
+		</tab>
+		<tab name="Advanced Settings">
+			<option name="Advanced Settings">
+				Allows to specify additional consumer related options, e.g., poll interval
+				and session timeout.	.
+			</option>
+		</tab>
+	</fullDescription>
+	<ports>
+		<inPort index="0" name="Kafka connection">Connection details used to create the Kafka Consumer
+		</inPort>
+		<outPort index="0" name="Batched Kafka messages">The current batch of consumed Kafka messages
+		</outPort>
+	</ports>
+</knimeNode>

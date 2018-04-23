@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<knimeNode xmlns="http://knime.org/node/v2.10" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://knime.org/node/v2.10 http://knime.org/node/v2.10"
+	type="Sink" icon="kafka_producer.png">
+	<name>Kafka Producer</name>
+	<shortDescription>
+		Allows to send messages to Kafka.
+	</shortDescription>
+	<fullDescription>
+		<intro>
+			This node allows to consume messages from Kafka for given topics and to
+			store them in a table.
+		</intro>
+		<tab name="Settings">
+			<option name="Client ID">
+				An id string to pass to the server when making requests. The purpose of this is to
+				be able to track the source of requests beyond just ip/port by allowing a logical
+				application name to be included in server-side request logging.
+			</option>
+			<option name="Topics">
+				A list of topics the producer sends the messages to. The topics list has to be in the
+				form <tt>topic1,topic2,...</tt>.
+			</option>
+			<option name="Message Column">
+				Specifies the column containing the messages that have to be send to Kafka. This
+				column can be either of type String or JSON. 
+			</option>
+		</tab>
+		<tab name="Advanced Settings">
+			<option name="Advanced Settings">
+				Allows to specify additional producer related options, e.g., request timeout
+				and number of retries.				.
+			</option>
+		</tab>
+	</fullDescription>
+	<ports>
+		<inPort index="0" name="Data table">Data table holding the column to be send to Kafka
+		</inPort>
+		<inPort index="1" name="Kafka connection">Connection details used to create the Kafka Producer
+		</inPort>
+	</ports>
+</knimeNode>

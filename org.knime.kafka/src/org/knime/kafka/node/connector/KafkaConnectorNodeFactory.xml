@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<knimeNode xmlns="http://knime.org/node/v2.10" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://knime.org/node/v2.10 http://knime.org/node/v2.10"
+	type="Source" icon="kafka_connector.png">
+	<name>Kafka Connector</name>
+	<shortDescription>
+		Provides connection settings to a Kafka Cluster.
+	</shortDescription>
+
+	<fullDescription>
+		<intro>
+			This node allows to define any information that is needed
+			to create a connection with Kafka.
+		</intro>
+		<tab name="Settings">
+			<option name="Server list">
+				A list of host/port pairs used for establishing the connection to the Kafka cluster. 
+				This list has to be in the form <tt>host1:port1,host2:port2,...</tt>. 
+			</option>
+		</tab>
+		<tab name="Advanced Settings">
+			<option name="Advanced Settings">
+				Allows to specify additional connection related options, e.g., timeouts
+				and Kerberos authentication.
+			</option>
+
+		</tab>
+	</fullDescription>
+	<ports>
+		<outPort index="0" name="Kafka connection">Connection details used by Kafka Consumer
+		and Producer nodes
+		</outPort>
+	</ports>
+</knimeNode>
