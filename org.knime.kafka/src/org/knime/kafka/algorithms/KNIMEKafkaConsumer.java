@@ -130,7 +130,7 @@ public final class KNIMEKafkaConsumer {
     /** The message offset. */
     private long m_offset;
 
-    /** The batch size. */
+    /** The batch size. A value less than or equal 0 indicates that we don't creates any batches. */
     private long m_batchSize;
 
     /** The poll timeout. */
@@ -361,7 +361,7 @@ public final class KNIMEKafkaConsumer {
         boolean done = false;
         long noRecordsCount = 0;
         int retries = 0;
-        int numOfPolledRec = 0;
+        long numOfPolledRec = 0;
         // flag used to omit ignoring the history in case of a reconnect
         boolean ignoreHistory = m_ignoreHistory;
         // map used for syncing
@@ -400,10 +400,16 @@ public final class KNIMEKafkaConsumer {
                     // add the offset to the map
                     offsetMap.put(new TopicPartition(record.topic(), record.partition()),
                         new OffsetAndMetadata(record.offset() + 1));
-                    // if the number of messages we sent
-                    if (++numOfPolledRec == m_batchSize) {
+                    // if the number of messages we pushed equals the batch size we stop
+                    // a negative batch size indicates that we will only stop if the
+                    // consumer starved
+                    if (m_batchSize > 0 && ++numOfPolledRec == m_batchSize) {
                         done = true;
                         break;
+                    }
+                    // prevent overflow
+                    if (numOfPolledRec == Long.MAX_VALUE) {
+                        numOfPolledRec = 0;
                     }
                 }
 

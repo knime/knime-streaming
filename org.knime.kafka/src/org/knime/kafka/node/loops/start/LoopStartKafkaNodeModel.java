@@ -61,7 +61,7 @@ import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeModel;
 import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
-import org.knime.core.node.defaultnodesettings.SettingsModelIntegerBounded;
+import org.knime.core.node.defaultnodesettings.SettingsModelLongBounded;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.PortType;
@@ -95,7 +95,7 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
     private SettingsModelKafkaLoopStart m_consumerSettings;
 
     /** The batch size settings model. */
-    private SettingsModelIntegerBounded m_batchModel;
+    private SettingsModelLongBounded m_batchModel;
 
     /** The iteration count. */
     private int m_iterationCount;
@@ -204,7 +204,7 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
                         .appendTopic(m_consumerSettings.appendTopic())//
                         .convertToJSON(m_consumerSettings.convertToJSON())//
                         .ignoreHistory(m_consumerSettings.ignoreHistory())//
-                        .setBatchSize(m_batchModel.getIntValue())//
+                        .setBatchSize(m_batchModel.getLongValue())//
                         .setOffset(0)//
                         .setPollTimeout(m_consumerSettings.getPollTimeout())//
                         .build();
@@ -292,8 +292,8 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
      *
      * @return the batch size settings model
      */
-    static SettingsModelIntegerBounded createBatchSizeModel() {
-        return new SettingsModelIntegerBounded(CFG_BATCH, DEFAULT_BATCH_SIZE, 0, Integer.MAX_VALUE);
+    static SettingsModelLongBounded createBatchSizeModel() {
+        return new SettingsModelLongBounded(CFG_BATCH, DEFAULT_BATCH_SIZE, 1, Integer.MAX_VALUE);
     }
 
     /**

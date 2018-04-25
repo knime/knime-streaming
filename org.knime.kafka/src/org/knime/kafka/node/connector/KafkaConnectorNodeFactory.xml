@@ -17,6 +17,11 @@
 				A list of host/port pairs used for establishing the connection to the Kafka cluster. 
 				This list has to be in the form <tt>host1:port1,host2:port2,...</tt>. 
 			</option>
+			<option name="Connection validation timeout (ms)">
+				The validation timeout defines the amount of time this node waits for a response
+				from the server. If no response was received within the given time window the 
+				connection is invalid. 
+			</option>
 		</tab>
 		<tab name="Advanced Settings">
 			<option name="Advanced Settings">

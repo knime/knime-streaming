@@ -148,7 +148,7 @@ final class KafkaConsumerNodeModel extends NodeModel {
                 .appendTopic(m_consumerSettings.appendTopic())//
                 .convertToJSON(m_consumerSettings.convertToJSON())//
                 .ignoreHistory(m_consumerSettings.ignoreHistory())//
-                .setBatchSize(Long.MAX_VALUE)//
+                .setBatchSize(-1)//
                 .setOffset(0)//
                 .setPollTimeout(m_consumerSettings.getPollTimeout())//
                 .build();
