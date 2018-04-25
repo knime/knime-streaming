@@ -1,5 +1,5 @@
-This plug-in makes use of the <Apache Kafka> and <lz4-java> libraries, which themselves are licensed under their respective
-licenses:
+This plug-in makes use of the <Apache Kafka> and <lz4-java> libraries, which themselves are licensed under their
+respective licenses:
 
 ** Apache Kafka **
 Released by The Apache Software Foundation
