@@ -730,6 +730,10 @@ license terms applicable to such Node, including when such Node is
 propagated with or for interoperation with KNIME.
    </license>
 
+   <includes
+         id="org.knime.features.core.streaming"
+         version="0.0.0"/>
+
    <plugin
          id="org.knime.kafka"
          download-size="0"
