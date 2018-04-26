@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cspecExtension xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bc="http://www.eclipse.org/buckminster/Common-1.0" xmlns="http://www.eclipse.org/buckminster/CSpec-1.0">
+  <dependencies>
+    <dependency name="lz4-java" componentType="osgi.bundle"/>
+    <dependency name="org.xerial.snappy.java" componentType="osgi.bundle"/>
+  </dependencies>
+</cspecExtension>
