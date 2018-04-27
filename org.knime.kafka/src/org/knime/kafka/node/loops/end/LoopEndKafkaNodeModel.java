@@ -124,9 +124,6 @@ final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
         // initialize all setting models
         init();
 
-        // close connection (shouldn't be necessary)
-        closeConnection();
-
         // check if the loop start node implements the proper interface
         if (!(this.getLoopStartNode() instanceof LoopStartNodeTerminator)) {
             throw new IllegalStateException(LOOP_CONNECTION_EXCEPTION);
@@ -174,14 +171,8 @@ final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
         initProducer(port.getConnectionProperties(), m_producerSettings.getProperties(),
             port.getConnectionValidationTimeout());
 
-        try {
-            // execute the producer
-            m_kafkaProduer.execute(exec, (BufferedDataTable)inObjects[0]);
-        } catch (final Exception e) {
-            // if something happened reset everything (most importantly close the producer)
-            closeConnection();
-            throw (e);
-        }
+        // execute the producer, if this fails reset will be called
+        m_kafkaProduer.execute(exec, (BufferedDataTable)inObjects[0]);
 
         // test if the loop start is terminated and proceed accordingly
         boolean terminateLoop = ((LoopStartNodeTerminator)this.getLoopStartNode()).terminateLoop();
