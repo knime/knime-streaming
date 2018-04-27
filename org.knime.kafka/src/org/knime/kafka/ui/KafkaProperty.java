@@ -102,7 +102,7 @@ public final class KafkaProperty implements Comparable<KafkaProperty> {
 			m_value = (String) value;
 		} else if (m_type == ConfigDef.Type.CLASS) {
 			// if it is a class remove the leading class string
-			String tmp = value.getClass().getName();
+			String tmp = String.valueOf(value);
 			tmp = tmp.replaceAll("^class", "").trim();
 			m_value = tmp;
 		} else if (m_type == ConfigDef.Type.LIST) {
