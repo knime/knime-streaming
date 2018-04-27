@@ -56,7 +56,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
-import org.apache.kafka.clients.consumer.CommitFailedException;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -90,9 +89,6 @@ import org.knime.core.node.streamable.RowOutput;
  */
 
 public final class KNIMEKafkaConsumer {
-
-    /** The number of retries before stopping to reconnect to Kafka. */
-    private static final int RETRIES = 3;
 
     /** The connection properties. */
     private final Properties m_connectionProps;
@@ -360,10 +356,7 @@ public final class KNIMEKafkaConsumer {
     public void execute(final ExecutionContext exec, final RowOutput output) throws Exception {
         boolean done = false;
         long noRecordsCount = 0;
-        int retries = 0;
         long numOfPolledRec = 0;
-        // flag used to omit ignoring the history in case of a reconnect
-        boolean ignoreHistory = m_ignoreHistory;
         // map used for syncing
         final Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
 
@@ -377,7 +370,7 @@ public final class KNIMEKafkaConsumer {
                 offsetMap.clear();
 
                 // init the consumer
-                initConsumer(ignoreHistory);
+                initConsumer();
 
                 // poll the messages
                 final ConsumerRecords<Long, String> consumerRecords = m_consumer.poll(m_pollTimeout);
@@ -416,23 +409,6 @@ public final class KNIMEKafkaConsumer {
                 // commit the offsets w.r.t. to the processed messages
                 m_consumer.commitSync(offsetMap);
 
-                // update flags and counters
-                ignoreHistory = false;
-                retries = 0;
-            } catch (final CommitFailedException e) {
-                // reset the consumer
-                reset();
-
-                // if we reached the max number of retries give up
-                if (++retries == RETRIES) {
-                    output.close();
-                    throw e;
-                } else {
-                    // otherwise give it another try
-                    exec.setMessage("Kafka consumer encountered a problem. Trying to reconnect (" + retries + " out of "
-                        + RETRIES + " attempts)");
-                    continue;
-                }
             } catch (final InterruptException e) {
                 // set interrupted flag and wake up the consumer
                 m_wasInterrupted = true;
@@ -492,10 +468,9 @@ public final class KNIMEKafkaConsumer {
     /**
      * Initializes the KnimeConsumer.
      *
-     * @param ignoreHistory <code>True</code> if unprocessed messages have to be ignored
      * @return the {@link KafkaConsumer}
      */
-    private KafkaConsumer<Long, String> initConsumer(final boolean ignoreHistory) throws InvalidSettingsException {
+    private KafkaConsumer<Long, String> initConsumer() throws InvalidSettingsException {
         if (m_consumer != null) {
             return m_consumer;
         }
@@ -504,7 +479,7 @@ public final class KNIMEKafkaConsumer {
 
         // initialize the consumer
         m_consumer = new KafkaConsumer<>(m_properties);
-        final ConsumerRebalanceListener crl = new ConsumerListener(ignoreHistory);
+        final ConsumerRebalanceListener crl = new ConsumerListener(m_ignoreHistory);
         if (m_isPattern) {
             m_consumer.subscribe(Pattern.compile(m_topics), crl);
         } else {
@@ -548,10 +523,12 @@ public final class KNIMEKafkaConsumer {
 
         @Override
         public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
+            System.out.println("revoked");
         }
 
         @Override
         public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
+            System.out.println("assigned");
             if (m_seekToEnd) {
                 m_consumer.seekToEnd(partitions);
             }
