@@ -135,9 +135,6 @@ public final class KNIMEKafkaConsumer {
     /** The KafkaConsumer . */
     private KafkaConsumer<Long, String> m_consumer;
 
-    /** <code>True</code> if the KafkaConsumer was interrupted. */
-    private boolean m_wasInterrupted;
-
     /**
      * Constructor.
      *
@@ -160,7 +157,6 @@ public final class KNIMEKafkaConsumer {
         m_pollTimeout = builder.m_pollTimeout;
         m_starved = false;
         m_consumer = null;
-        m_wasInterrupted = false;
     }
 
     /**
@@ -327,7 +323,24 @@ public final class KNIMEKafkaConsumer {
      * Closes the consumer.
      */
     public void close() {
-        reset();
+        if (m_consumer != null) {
+            // TODO: If the nodes was executed in streaming mode
+            // a canceled execution exception will mark the
+            // thread interrupted, causing KafkaConsumer to log an
+            // error during close. Removing this flag stops the logging.
+            // However a better solution would be to change the logging
+            // level of the KafkaConsumer in this case.
+            if (Thread.currentThread().isInterrupted()) {
+                Thread.interrupted();
+            }
+            try {
+                m_consumer.close();
+            } catch (final Exception e) {
+                // Exception is logged anyway by the KafkaConsumer
+            } finally {
+                m_consumer = null;
+            }
+        }
     }
 
     /**
@@ -410,34 +423,17 @@ public final class KNIMEKafkaConsumer {
                 m_consumer.commitSync(offsetMap);
 
             } catch (final InterruptException e) {
-                // set interrupted flag and wake up the consumer
-                m_wasInterrupted = true;
-                m_consumer.wakeup();
+                // InterruptException precedes CancledExecution therefore continue here
+                // first call in the loop will cause CanceledExecutionException
+                continue;
             } catch (final CanceledExecutionException e) {
-                // this is preceded by an interrupt therefore set this flag
-                m_wasInterrupted = true;
+                throw e;
+            } catch (final Exception e) {
                 throw e;
             }
         }
         // close the output
         output.close();
-    }
-
-    /**
-     * Resets the KafkaConsumer.
-     */
-    private void reset() {
-        if (m_consumer != null) {
-            if (m_wasInterrupted) {
-                Thread.interrupted();
-            }
-            try {
-                m_consumer.close();
-            } catch (final Exception e) {
-            } finally {
-                m_consumer = null;
-            }
-        }
     }
 
     /**
@@ -523,12 +519,10 @@ public final class KNIMEKafkaConsumer {
 
         @Override
         public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
-            System.out.println("revoked");
         }
 
         @Override
         public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
-            System.out.println("assigned");
             if (m_seekToEnd) {
                 m_consumer.seekToEnd(partitions);
             }
