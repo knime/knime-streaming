@@ -83,7 +83,7 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
 
     /** The settings model storing the number of max empty polls. */
     private final SettingsModelLong m_maxEmptyPolls =
-        new SettingsModelLongBounded("maxEmptyPolls", -1, -1, Long.MAX_VALUE);
+        new SettingsModelLongBounded("maxEmptyPolls", 3, -1, Long.MAX_VALUE);
 
     /** The settings model storing the topic pattern flag. */
     private final SettingsModelBoolean m_topicPattern = new SettingsModelBoolean("topicPattern", false);
