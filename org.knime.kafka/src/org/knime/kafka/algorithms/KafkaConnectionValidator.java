@@ -52,6 +52,8 @@ import java.util.Properties;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.knime.core.node.InvalidSettingsException;
@@ -63,9 +65,12 @@ import org.knime.core.node.InvalidSettingsException;
  */
 public final class KafkaConnectionValidator {
 
+    /** The validation exception. */
+    private static final String VALIDATION_EXCEPTION =
+        "Cannot connect to server. Please ensure that the server list and advanced settings were correctly set.";
+
     /** The connection exception. */
-    private static final String CONNECTION_EXCEPTION =
-        "Cannot connect to server. Either the server is currently offline, or the provided address is incorrect.";
+    private static final String CONNECTION_EXCEPTION = "Cannot connect to the server.";
 
     /**
      * Test if the entered properties allow to connect to the server.
@@ -76,6 +81,30 @@ public final class KafkaConnectionValidator {
      */
     public static void validateConnection(final Properties connectionProps, final int requestTimeout)
         throws InvalidSettingsException {
+        checkConnection(connectionProps, requestTimeout, VALIDATION_EXCEPTION);
+    }
+
+    /**
+     * Test if the server is still available.
+     *
+     * @param connectionProps the connection properties
+     * @param requestTimeout the request timeout used to test the connection
+     * @throws InvalidSettingsException - If the connection is not valid
+     */
+    public static void testConnection(final Properties connectionProps, final int requestTimeout)
+        throws InvalidSettingsException {
+        checkConnection(connectionProps, requestTimeout, CONNECTION_EXCEPTION);
+    }
+
+    /**
+     * Checks the server connection.
+     *
+     * @param connectionProps the connection properties
+     * @param requestTimeout the request timeout used to test the connection
+     * @throws InvalidSettingsException - If the connection is not valid
+     */
+    private static void checkConnection(final Properties connectionProps, final int requestTimeout,
+        final String exceptionMsg) throws InvalidSettingsException {
         Properties props = new Properties();
         props.putAll(connectionProps);
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, requestTimeout - 1);
@@ -86,8 +115,10 @@ public final class KafkaConnectionValidator {
         props.put("value.deserializer", StringDeserializer.class.getName());
         try (KafkaConsumer<Long, String> simpleConsumer = new KafkaConsumer<>(props)) {
             simpleConsumer.listTopics();
-        } catch (final Exception e) {
-            throw new InvalidSettingsException(CONNECTION_EXCEPTION);
+        } catch (final TimeoutException e) {
+            throw new InvalidSettingsException(exceptionMsg);
+        } catch (final KafkaException e) {
+            throw new InvalidSettingsException(e.getMessage());
         }
     }
 

@@ -471,7 +471,7 @@ public final class KNIMEKafkaConsumer {
             return m_consumer;
         }
         // validate the connection before creating a consumer
-        KafkaConnectionValidator.validateConnection(m_connectionProps, m_conValTimeout);
+        KafkaConnectionValidator.testConnection(m_connectionProps, m_conValTimeout);
 
         // initialize the consumer
         m_consumer = new KafkaConsumer<>(m_properties);
