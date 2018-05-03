@@ -201,7 +201,7 @@ public final class KNIMEKafkaProducer {
      */
     private void initProducer() throws InvalidSettingsException {
         if (m_producer == null) {
-            KafkaConnectionValidator.validateConnection(m_connectionProps, m_conValTimeout);
+            KafkaConnectionValidator.testConnection(m_connectionProps, m_conValTimeout);
             m_producer = new KafkaProducer<>(m_props);
         }
     }

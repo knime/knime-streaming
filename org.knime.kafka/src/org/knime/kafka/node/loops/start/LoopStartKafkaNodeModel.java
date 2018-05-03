@@ -98,7 +98,7 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
     private SettingsModelLongBounded m_batchModel;
 
     /** The iteration count. */
-    private int m_iterationCount;
+    private int m_iterationCount = 0;
 
     /** <code>True</code> if the loop has terminated. */
     private boolean m_terminated = false;
@@ -141,9 +141,6 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
         // set the blocked properties
         m_consumerSettings.setBlockedProps(((KafkaConnectorPortSpec)inSpecs[0]).getBlockedProperties());
 
-        // reset the iteration count and flags
-        terminateConnecAndReset();
-
         if (m_consumerSettings.getTopic().isEmpty()) {
             throw new InvalidSettingsException(EMPTY_TOPICS_EXCEPTION);
         }
@@ -166,18 +163,14 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
         initConsumer(port.getConnectionProperties(), m_consumerSettings.getProperties(),
             port.getConnectionValidationTimeout());
         BufferedDataTable outData = null;
-        try {
-            // execute the consumer
-            outData = m_kafkaConsumer.execute(exec);
-        } catch (final Exception e) {
-            // if something happened reset everything (most importantly close the consumer)
-            terminateConnecAndReset();
-            throw (e);
-        }
+
+        // execute the consumer, if this fails reset will be called
+        outData = m_kafkaConsumer.execute(exec);
+
         // check for termination
-        m_terminated = m_kafkaConsumer.isStarved();
-        if (m_terminated) {
-            terminateConnecAndReset();
+        if (m_kafkaConsumer.isStarved()) {
+            m_terminated = true;
+            terminateConnection();
         }
 
         // push flow variables
@@ -203,7 +196,6 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
                     m_consumerSettings.useTopicPattern(), m_consumerSettings.getMaxEmptyPolls(), conValTimeout)//
                         .appendTopic(m_consumerSettings.appendTopic())//
                         .convertToJSON(m_consumerSettings.convertToJSON())//
-                        .ignoreHistory(m_consumerSettings.ignoreHistory())//
                         .setBatchSize(m_batchModel.getLongValue())//
                         .setOffset(0)//
                         .setPollTimeout(m_consumerSettings.getPollTimeout())//
@@ -216,19 +208,19 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
      */
     @Override
     protected void reset() {
-        terminateConnecAndReset();
+        terminateConnection();
+        m_iterationCount = 0;
+        m_terminated = false;
     }
 
     /**
-     * Terminates the connection and reset counters and flags.
+     * Terminates the connection if necessary.
      */
-    private void terminateConnecAndReset() {
+    private void terminateConnection() {
         if (m_kafkaConsumer != null) {
             m_kafkaConsumer.close();
             m_kafkaConsumer = null;
         }
-        m_iterationCount = 0;
-        m_terminated = false;
     }
 
     /** {@inheritDoc} */

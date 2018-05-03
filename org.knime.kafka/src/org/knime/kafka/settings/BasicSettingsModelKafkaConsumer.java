@@ -63,7 +63,6 @@ import org.knime.kafka.ui.KafkaModel;
 import org.knime.kafka.ui.KafkaProperty;
 
 /**
- *
  * Settings model storing all the basic information to consume entries from Kafka.
  *
  * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
@@ -83,7 +82,7 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
 
     /** The settings model storing the number of max empty polls. */
     private final SettingsModelLong m_maxEmptyPolls =
-        new SettingsModelLongBounded("maxEmptyPolls", -1, -1, Long.MAX_VALUE);
+        new SettingsModelLongBounded("maxEmptyPolls", 3, -1, Long.MAX_VALUE);
 
     /** The settings model storing the topic pattern flag. */
     private final SettingsModelBoolean m_topicPattern = new SettingsModelBoolean("topicPattern", false);
@@ -93,9 +92,6 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
 
     /** The settings model storing the append topic column flag. */
     private final SettingsModelBoolean m_appendTopicColumn = new SettingsModelBoolean("appendTopicColumn", false);
-
-    /** The settings model storing the ignore history flag. */
-    private final SettingsModelBoolean m_ignoreHistory = new SettingsModelBoolean("ignoreHistory", false);
 
     /** The settings model storing the topics / topic pattern. */
     private final SettingsModelString m_topicModel = new SettingsModelString("topic", "");
@@ -115,7 +111,6 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
         addModel(m_topicPattern);
         addModel(m_convertToJSON);
         addModel(m_appendTopicColumn);
-        addModel(m_ignoreHistory);
         addModel(m_pollTimeout);
     }
 
@@ -174,15 +169,6 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
     }
 
     /**
-     * Returns the settings model storing the ignore history flag.
-     *
-     * @return the ignore history settings model
-     */
-    public final SettingsModelBoolean getIgnoreHistorySettingsModel() {
-        return m_ignoreHistory;
-    }
-
-    /**
      * Returns the settings model storing the topics / topic pattern.
      *
      * @return the topic settings model
@@ -216,15 +202,6 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      */
     public final boolean appendTopic() {
         return m_appendTopicColumn.getBooleanValue();
-    }
-
-    /**
-     * Returns the ignore history flag.
-     *
-     * @return the ignore history flag
-     */
-    public final boolean ignoreHistory() {
-        return m_ignoreHistory.getBooleanValue();
     }
 
     /**

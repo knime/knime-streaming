@@ -50,14 +50,11 @@ package org.knime.kafka.algorithms;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
-import org.apache.kafka.clients.consumer.CommitFailedException;
-import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -91,9 +88,6 @@ import org.knime.core.node.streamable.RowOutput;
 
 public final class KNIMEKafkaConsumer {
 
-    /** The number of retries before stopping to reconnect to Kafka. */
-    private static final int RETRIES = 3;
-
     /** The connection properties. */
     private final Properties m_connectionProps;
 
@@ -111,9 +105,6 @@ public final class KNIMEKafkaConsumer {
 
     /** The connection validation timeout. */
     private final int m_conValTimeout;
-
-    /** <code>True</code> if the message history has to be ignored . */
-    private boolean m_ignoreHistory;
 
     /** <code>True</code> if the message has to be converted to a JSON cell. */
     private final boolean m_convertToJSON;
@@ -139,9 +130,6 @@ public final class KNIMEKafkaConsumer {
     /** The KafkaConsumer . */
     private KafkaConsumer<Long, String> m_consumer;
 
-    /** <code>True</code> if the KafkaConsumer was interrupted. */
-    private boolean m_wasInterrupted;
-
     /**
      * Constructor.
      *
@@ -156,7 +144,6 @@ public final class KNIMEKafkaConsumer {
         m_topics = builder.m_topics;
         m_isPattern = builder.m_isPattern;
         m_maxEmptyPolls = builder.m_maxEmptyPolls;
-        m_ignoreHistory = builder.m_ignoreHistory;
         m_convertToJSON = builder.m_convertToJSON;
         m_appendTopic = builder.m_appendTopic;
         m_offset = builder.m_offset;
@@ -164,7 +151,6 @@ public final class KNIMEKafkaConsumer {
         m_pollTimeout = builder.m_pollTimeout;
         m_starved = false;
         m_consumer = null;
-        m_wasInterrupted = false;
     }
 
     /**
@@ -195,9 +181,6 @@ public final class KNIMEKafkaConsumer {
         private final int m_conValTimeout;
 
         // Optional parameters
-        /** <code>True</code> if the message history has to be ignored . */
-        private boolean m_ignoreHistory = false;
-
         /** <code>True</code> if the message has to be converted to a JSON cell. */
         private boolean m_convertToJSON = false;
 
@@ -237,17 +220,6 @@ public final class KNIMEKafkaConsumer {
             m_isPattern = isPattern;
             m_maxEmptyPolls = maxEmptyPools;
             m_conValTimeout = conValTimeout;
-        }
-
-        /**
-         * Sets the ignore history flag. If <code>True</code> the consumer skips all unread messages.
-         *
-         * @param ignoreHistory the ignore history flag
-         * @return the builder itself
-         */
-        public Builder ignoreHistory(final boolean ignoreHistory) {
-            m_ignoreHistory = ignoreHistory;
-            return this;
         }
 
         /**
@@ -331,7 +303,24 @@ public final class KNIMEKafkaConsumer {
      * Closes the consumer.
      */
     public void close() {
-        reset();
+        if (m_consumer != null) {
+            // TODO: If the nodes was executed in streaming mode
+            // a canceled execution exception will mark the
+            // thread interrupted, causing KafkaConsumer to log an
+            // error during close. Removing this flag stops the logging.
+            // However a better solution would be to change the logging
+            // level of the KafkaConsumer in this case.
+            if (Thread.currentThread().isInterrupted()) {
+                Thread.interrupted();
+            }
+            try {
+                m_consumer.close();
+            } catch (final Exception e) {
+                // Exception is logged anyway by the KafkaConsumer
+            } finally {
+                m_consumer = null;
+            }
+        }
     }
 
     /**
@@ -360,10 +349,7 @@ public final class KNIMEKafkaConsumer {
     public void execute(final ExecutionContext exec, final RowOutput output) throws Exception {
         boolean done = false;
         long noRecordsCount = 0;
-        int retries = 0;
         long numOfPolledRec = 0;
-        // flag used to omit ignoring the history in case of a reconnect
-        boolean ignoreHistory = m_ignoreHistory;
         // map used for syncing
         final Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
 
@@ -377,7 +363,7 @@ public final class KNIMEKafkaConsumer {
                 offsetMap.clear();
 
                 // init the consumer
-                initConsumer(ignoreHistory);
+                initConsumer();
 
                 // poll the messages
                 final ConsumerRecords<Long, String> consumerRecords = m_consumer.poll(m_pollTimeout);
@@ -416,52 +402,18 @@ public final class KNIMEKafkaConsumer {
                 // commit the offsets w.r.t. to the processed messages
                 m_consumer.commitSync(offsetMap);
 
-                // update flags and counters
-                ignoreHistory = false;
-                retries = 0;
-            } catch (final CommitFailedException e) {
-                // reset the consumer
-                reset();
-
-                // if we reached the max number of retries give up
-                if (++retries == RETRIES) {
-                    output.close();
-                    throw e;
-                } else {
-                    // otherwise give it another try
-                    exec.setMessage("Kafka consumer encountered a problem. Trying to reconnect (" + retries + " out of "
-                        + RETRIES + " attempts)");
-                    continue;
-                }
             } catch (final InterruptException e) {
-                // set interrupted flag and wake up the consumer
-                m_wasInterrupted = true;
-                m_consumer.wakeup();
+                // InterruptException precedes CancledExecution therefore continue here
+                // first call in the loop will cause CanceledExecutionException
+                continue;
             } catch (final CanceledExecutionException e) {
-                // this is preceded by an interrupt therefore set this flag
-                m_wasInterrupted = true;
+                throw e;
+            } catch (final Exception e) {
                 throw e;
             }
         }
         // close the output
         output.close();
-    }
-
-    /**
-     * Resets the KafkaConsumer.
-     */
-    private void reset() {
-        if (m_consumer != null) {
-            if (m_wasInterrupted) {
-                Thread.interrupted();
-            }
-            try {
-                m_consumer.close();
-            } catch (final Exception e) {
-            } finally {
-                m_consumer = null;
-            }
-        }
     }
 
     /**
@@ -492,23 +444,21 @@ public final class KNIMEKafkaConsumer {
     /**
      * Initializes the KnimeConsumer.
      *
-     * @param ignoreHistory <code>True</code> if unprocessed messages have to be ignored
      * @return the {@link KafkaConsumer}
      */
-    private KafkaConsumer<Long, String> initConsumer(final boolean ignoreHistory) throws InvalidSettingsException {
+    private KafkaConsumer<Long, String> initConsumer() throws InvalidSettingsException {
         if (m_consumer != null) {
             return m_consumer;
         }
         // validate the connection before creating a consumer
-        KafkaConnectionValidator.validateConnection(m_connectionProps, m_conValTimeout);
+        KafkaConnectionValidator.testConnection(m_connectionProps, m_conValTimeout);
 
         // initialize the consumer
         m_consumer = new KafkaConsumer<>(m_properties);
-        final ConsumerRebalanceListener crl = new ConsumerListener(ignoreHistory);
         if (m_isPattern) {
-            m_consumer.subscribe(Pattern.compile(m_topics), crl);
+            m_consumer.subscribe(Pattern.compile(m_topics));
         } else {
-            m_consumer.subscribe(Arrays.asList(m_topics.trim().split("\\s*,\\s*", -1)), crl);
+            m_consumer.subscribe(Arrays.asList(m_topics.trim().split("\\s*,\\s*", -1)));
         }
         return m_consumer;
     }
@@ -533,28 +483,4 @@ public final class KNIMEKafkaConsumer {
         return new DefaultRow(RowKey.createRowKey(m_offset++), msgCell);
     }
 
-    /**
-     * Listener the skips all unread messages if necessary.
-     *
-     * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
-     */
-    private class ConsumerListener implements ConsumerRebalanceListener {
-
-        private final boolean m_seekToEnd;
-
-        private ConsumerListener(final boolean seekToEnd) {
-            m_seekToEnd = seekToEnd;
-        }
-
-        @Override
-        public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
-        }
-
-        @Override
-        public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
-            if (m_seekToEnd) {
-                m_consumer.seekToEnd(partitions);
-            }
-        }
-    }
 }
