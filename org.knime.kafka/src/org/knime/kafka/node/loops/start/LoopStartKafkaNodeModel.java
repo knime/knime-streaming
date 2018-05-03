@@ -196,7 +196,6 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
                     m_consumerSettings.useTopicPattern(), m_consumerSettings.getMaxEmptyPolls(), conValTimeout)//
                         .appendTopic(m_consumerSettings.appendTopic())//
                         .convertToJSON(m_consumerSettings.convertToJSON())//
-                        .ignoreHistory(m_consumerSettings.ignoreHistory())//
                         .setBatchSize(m_batchModel.getLongValue())//
                         .setOffset(0)//
                         .setPollTimeout(m_consumerSettings.getPollTimeout())//

@@ -147,7 +147,6 @@ final class KafkaConsumerNodeModel extends NodeModel {
             m_consumerSettings.useTopicPattern(), m_consumerSettings.getMaxEmptyPolls(), conValTimeout)//
                 .appendTopic(m_consumerSettings.appendTopic())//
                 .convertToJSON(m_consumerSettings.convertToJSON())//
-                .ignoreHistory(m_consumerSettings.ignoreHistory())//
                 .setBatchSize(-1)//
                 .setOffset(0)//
                 .setPollTimeout(m_consumerSettings.getPollTimeout())//

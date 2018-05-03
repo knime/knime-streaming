@@ -62,9 +62,6 @@
 				If this option is selected the consumed messages are converted from String
 				to JSON.
 			</option>
-			<option name="Ignore history">
-				Automatically skips all unprocessed messages. 
-			</option>
 		</tab>
 		<tab name="Advanced Settings">
 			<option name="Advanced Settings">

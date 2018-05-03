@@ -52,9 +52,6 @@
 				If this option is selected the consumed messages are converted from String
 				to JSON.
 			</option>
-			<option name="Ignore history">
-				Automatically skips all unprocessed messages. 
-			</option>
 			<option name="Batch size">
 				The size of each batch, i.e., number of rows in the output table.
 			</option>

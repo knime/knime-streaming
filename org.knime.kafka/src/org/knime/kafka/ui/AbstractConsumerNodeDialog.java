@@ -94,9 +94,6 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
     /** The convert to JSON component label. */
     private static final String CONVERT_TO_JSON_COMP_LABEL = "Convert message to JSON";
 
-    /** The ignore history component label. */
-    private static final String IGNORE_HISTORY_COMP_LABEL = "Ignore history";
-
     /** The max empty polls component label. */
     private static final String MAX_EMPTY_POLLS__COMP_LABEL = "Max empty polls (-1 for infinite):";
 
@@ -111,13 +108,11 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
                 DEFAULT_INPUT_COMP_WIDTH)//
             , new DialogComponentNumberEdit(getModel().getPollTimeoutSettingsModel(), POLL_TIMEOUT_COMP_LABEL)//
             , new DialogComponentNumberEdit(getModel().getMaxEmptyPollsSettingsModel(), MAX_EMPTY_POLLS__COMP_LABEL)//
-            ,
-            new DialogComponentString(getModel().getTopicsSettingsModel(), TOPICS_COMP_LABEL, true,
+            , new DialogComponentString(getModel().getTopicsSettingsModel(), TOPICS_COMP_LABEL, true,
                 DEFAULT_INPUT_COMP_WIDTH) //
             , new DialogComponentBoolean(getModel().getTopicPatternSettingsModel(), TOPIC_IS_PATTERN_COMP_LABEL)//
             , new DialogComponentBoolean(getModel().getAppendTopicColumnSettingsModel(), APPEND_TOPIC_COLUMN_COMP_LABEL)//
             , new DialogComponentBoolean(getModel().getConvertToJSONSettingsModel(), CONVERT_TO_JSON_COMP_LABEL)//
-            , new DialogComponentBoolean(getModel().getIgnoreHistorySettingsModel(), IGNORE_HISTORY_COMP_LABEL)//
         }));
         return comps;
     }

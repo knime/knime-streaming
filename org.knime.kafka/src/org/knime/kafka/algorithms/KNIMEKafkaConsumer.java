@@ -50,13 +50,11 @@ package org.knime.kafka.algorithms;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
-import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -108,9 +106,6 @@ public final class KNIMEKafkaConsumer {
     /** The connection validation timeout. */
     private final int m_conValTimeout;
 
-    /** <code>True</code> if the message history has to be ignored . */
-    private boolean m_ignoreHistory;
-
     /** <code>True</code> if the message has to be converted to a JSON cell. */
     private final boolean m_convertToJSON;
 
@@ -149,7 +144,6 @@ public final class KNIMEKafkaConsumer {
         m_topics = builder.m_topics;
         m_isPattern = builder.m_isPattern;
         m_maxEmptyPolls = builder.m_maxEmptyPolls;
-        m_ignoreHistory = builder.m_ignoreHistory;
         m_convertToJSON = builder.m_convertToJSON;
         m_appendTopic = builder.m_appendTopic;
         m_offset = builder.m_offset;
@@ -187,9 +181,6 @@ public final class KNIMEKafkaConsumer {
         private final int m_conValTimeout;
 
         // Optional parameters
-        /** <code>True</code> if the message history has to be ignored . */
-        private boolean m_ignoreHistory = false;
-
         /** <code>True</code> if the message has to be converted to a JSON cell. */
         private boolean m_convertToJSON = false;
 
@@ -229,17 +220,6 @@ public final class KNIMEKafkaConsumer {
             m_isPattern = isPattern;
             m_maxEmptyPolls = maxEmptyPools;
             m_conValTimeout = conValTimeout;
-        }
-
-        /**
-         * Sets the ignore history flag. If <code>True</code> the consumer skips all unread messages.
-         *
-         * @param ignoreHistory the ignore history flag
-         * @return the builder itself
-         */
-        public Builder ignoreHistory(final boolean ignoreHistory) {
-            m_ignoreHistory = ignoreHistory;
-            return this;
         }
 
         /**
@@ -475,11 +455,10 @@ public final class KNIMEKafkaConsumer {
 
         // initialize the consumer
         m_consumer = new KafkaConsumer<>(m_properties);
-        final ConsumerRebalanceListener crl = new ConsumerListener(m_ignoreHistory);
         if (m_isPattern) {
-            m_consumer.subscribe(Pattern.compile(m_topics), crl);
+            m_consumer.subscribe(Pattern.compile(m_topics));
         } else {
-            m_consumer.subscribe(Arrays.asList(m_topics.trim().split("\\s*,\\s*", -1)), crl);
+            m_consumer.subscribe(Arrays.asList(m_topics.trim().split("\\s*,\\s*", -1)));
         }
         return m_consumer;
     }
@@ -504,28 +483,4 @@ public final class KNIMEKafkaConsumer {
         return new DefaultRow(RowKey.createRowKey(m_offset++), msgCell);
     }
 
-    /**
-     * Listener the skips all unread messages if necessary.
-     *
-     * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
-     */
-    private class ConsumerListener implements ConsumerRebalanceListener {
-
-        private final boolean m_seekToEnd;
-
-        private ConsumerListener(final boolean seekToEnd) {
-            m_seekToEnd = seekToEnd;
-        }
-
-        @Override
-        public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
-        }
-
-        @Override
-        public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
-            if (m_seekToEnd) {
-                m_consumer.seekToEnd(partitions);
-            }
-        }
-    }
 }
