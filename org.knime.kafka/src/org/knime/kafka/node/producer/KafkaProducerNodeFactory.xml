@@ -8,8 +8,7 @@
 	</shortDescription>
 	<fullDescription>
 		<intro>
-			This node allows to consume messages from Kafka for given topics and to
-			store them in a table.
+			This node allows to send messages to Kafka.
 		</intro>
 		<tab name="Settings">
 			<option name="Client ID">
