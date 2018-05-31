@@ -5,6 +5,20 @@
         <!-- needed so that the KNIME_Documentation_Builder application is available
              for the knime.create.helpfiles action. -->
         <dependency name="org.knime.workbench.help" componentType="osgi.bundle" />
+	    <dependency name="org.knime.config" componentType="osgi.bundle"/>
+	    <dependency name="net.minidev.json-smart" componentType="osgi.bundle"/>
+	    <dependency name="net.minidev.asm" componentType="osgi.bundle"/>
+	    <dependency name="net.minidev.accessors-smart" componentType="osgi.bundle"/>
+	    <dependency name="com.github.fge.btf" componentType="osgi.bundle"/>
+	    <dependency name="com.github.fge.jackson-coreutils" componentType="osgi.bundle"/>
+	    <dependency name="com.github.fge.json-schema-core" componentType="osgi.bundle"/>
+	    <dependency name="com.github.fge.json-schema-validator" componentType="osgi.bundle"/>
+	    <dependency name="com.github.fge.msg-simple" componentType="osgi.bundle"/>
+	    <dependency name="de.undercouch.bson4jackson" componentType="osgi.bundle"/>
+	    <dependency name="org.mozilla.javascript" componentType="osgi.bundle"/>
+	    <dependency name="com.googlecode.libphonenumber" componentType="osgi.bundle"/>
+	    <dependency name="com.google.gson" componentType="osgi.bundle"/>
+	    <dependency name="net.sf.jopt-simple.jopt-simple" componentType="osgi.bundle"/>        
     </dependencies>
     <actions>
         <!-- Dynamically build the files for the Eclipse help. -->
