@@ -9,6 +9,7 @@
 	    <dependency name="net.minidev.json-smart" componentType="osgi.bundle"/>
 	    <dependency name="net.minidev.asm" componentType="osgi.bundle"/>
 	    <dependency name="net.minidev.accessors-smart" componentType="osgi.bundle"/>
+	    <dependency name="org.objectweb.asm" componentType="osgi.bundle" versionDesignator="[5.0.0,6.0.0)"/>
 	    <dependency name="com.github.fge.btf" componentType="osgi.bundle"/>
 	    <dependency name="com.github.fge.jackson-coreutils" componentType="osgi.bundle"/>
 	    <dependency name="com.github.fge.json-schema-core" componentType="osgi.bundle"/>
