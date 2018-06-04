@@ -110,7 +110,7 @@ public final class KafkaProperty implements Comparable<KafkaProperty> {
 			if (value instanceof List<?>) {
 				final List<?> tmp = (List<?>) value;
 				m_value = tmp.stream()//
-						.map(v -> convert(v))//
+						.map(this::convert)//
 						.collect(Collectors.joining(",", "", ""));
 			} else {
 				m_value = "";

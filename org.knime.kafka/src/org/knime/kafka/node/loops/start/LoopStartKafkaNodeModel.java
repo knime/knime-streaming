@@ -67,8 +67,10 @@ import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.PortType;
 import org.knime.core.node.workflow.LoopStartNodeTerminator;
 import org.knime.kafka.algorithms.KNIMEKafkaConsumer;
+import org.knime.kafka.node.loops.end.LoopEndKafkaNodeModel;
 import org.knime.kafka.port.KafkaConnectorPortObject;
 import org.knime.kafka.port.KafkaConnectorPortSpec;
+import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer.ConsumptionBreakCondition;
 import org.knime.kafka.settings.SettingsModelKafkaLoopStart;
 
 /**
@@ -81,6 +83,9 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
 
     /** The empty topics exception text. */
     private static final String EMPTY_TOPICS_EXCEPTION = "The <Topics> cannot be empty";
+
+    /** The loop tail exception text. */
+    private static final String LOOP_TAIL_EXCEPTION = "Loop tail has wrong type!";
 
     /** The current iteration name. */
     private static final String CURRENT_ITERATION_NAME = "currentIteration";
@@ -145,8 +150,13 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
             throw new InvalidSettingsException(EMPTY_TOPICS_EXCEPTION);
         }
 
+        // test if options are controlled via flow var
+        ConsumptionBreakCondition
+            .getEnum(m_consumerSettings.getConsumptionBreakConditionSettingsModel().getStringValue());
+
         // push flow variables
-        pushFlowVariableInt(CURRENT_ITERATION_NAME, m_iterationCount++);
+        assert m_iterationCount == 0;
+        pushFlowVariableInt(CURRENT_ITERATION_NAME, m_iterationCount);
 
         // return the data spec
         return new DataTableSpec[]{KNIMEKafkaConsumer.createOutTableSpec(m_consumerSettings.convertToJSON(),
@@ -163,6 +173,9 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
         initConsumer(port.getConnectionProperties(), m_consumerSettings.getProperties(),
             port.getConnectionValidationTimeout());
         BufferedDataTable outData = null;
+
+        // validate that the proper loop end node is used
+        validateLoopEnd();
 
         // execute the consumer, if this fails reset will be called
         outData = m_kafkaConsumer.execute(exec);
@@ -182,6 +195,21 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
     }
 
     /**
+     * Ensures that this node is used with the proper loop end.
+     */
+    private void validateLoopEnd() {
+        if (getLoopEndNode() == null) {
+            assert m_iterationCount == 0;
+        } else {
+            assert m_iterationCount > 0;
+            if (!(getLoopEndNode() instanceof LoopEndKafkaNodeModel)) {
+                terminateConnection();
+                throw new IllegalArgumentException(LOOP_TAIL_EXCEPTION);
+            }
+        }
+    }
+
+    /**
      * Creates the Kafka consumer using the provided settings.
      *
      * @param connectionProps the Kafka connection properties
@@ -193,12 +221,13 @@ final class LoopStartKafkaNodeModel extends NodeModel implements LoopStartNodeTe
         if (m_kafkaConsumer == null) {
             m_kafkaConsumer =
                 new KNIMEKafkaConsumer.Builder(connectionProps, consumerProps, m_consumerSettings.getTopic(),
-                    m_consumerSettings.useTopicPattern(), m_consumerSettings.getMaxEmptyPolls(), conValTimeout)//
+                    m_consumerSettings.useTopicPattern(), m_consumerSettings.endlessStreaming(), conValTimeout)//
                         .appendTopic(m_consumerSettings.appendTopic())//
                         .convertToJSON(m_consumerSettings.convertToJSON())//
                         .setBatchSize(m_batchModel.getLongValue())//
                         .setOffset(0)//
                         .setPollTimeout(m_consumerSettings.getPollTimeout())//
+                        .lookAhead(true)//
                         .build();
         }
     }

@@ -52,6 +52,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.regex.Pattern;
 
@@ -60,7 +61,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.InterruptException;
 import org.knime.core.data.DataCell;
 import org.knime.core.data.DataColumnSpecCreator;
 import org.knime.core.data.DataRow;
@@ -73,7 +73,6 @@ import org.knime.core.data.def.StringCell;
 import org.knime.core.data.json.JSONCell;
 import org.knime.core.data.json.JSONCellFactory;
 import org.knime.core.node.BufferedDataTable;
-import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.streamable.BufferedDataTableRowOutput;
@@ -100,8 +99,8 @@ public final class KNIMEKafkaConsumer {
     /** <code>True</code> if the topics string represents a pattern. */
     private final boolean m_isPattern;
 
-    /** The maximum number of empty polls before stopping the execution. */
-    private final long m_maxEmptyPolls;
+    /** <code>True</code> if the consumer shall poll messages infinitely. */
+    private final boolean m_infinitePolling;
 
     /** The connection validation timeout. */
     private final int m_conValTimeout;
@@ -114,6 +113,12 @@ public final class KNIMEKafkaConsumer {
      * from.
      */
     private final boolean m_appendTopic;
+
+    /**
+     * <code>True</code> indicates at the end of every execution it is checked for additional messages. Only required
+     * for loop execution.
+     */
+    private final boolean m_lookAhead;
 
     /** <code>True</code> if the consumer has not polled any message for max number of empty polls many times. */
     private boolean m_starved;
@@ -143,12 +148,13 @@ public final class KNIMEKafkaConsumer {
         m_conValTimeout = builder.m_conValTimeout;
         m_topics = builder.m_topics;
         m_isPattern = builder.m_isPattern;
-        m_maxEmptyPolls = builder.m_maxEmptyPolls;
+        m_infinitePolling = builder.m_infinitePolling;
         m_convertToJSON = builder.m_convertToJSON;
         m_appendTopic = builder.m_appendTopic;
         m_offset = builder.m_offset;
         m_batchSize = builder.m_batchSize;
         m_pollTimeout = builder.m_pollTimeout;
+        m_lookAhead = builder.m_lookAhead;
         m_starved = false;
         m_consumer = null;
     }
@@ -174,8 +180,8 @@ public final class KNIMEKafkaConsumer {
         /** <code>True</code> if the topics string represents a pattern. */
         private final boolean m_isPattern;
 
-        /** The maximum number of empty polls before stopping the execution. */
-        private final long m_maxEmptyPolls;
+        /** <code>True</code> if the consumer shall poll messages infinitely. */
+        private final boolean m_infinitePolling;
 
         /** The connection validation timeout. */
         private final int m_conValTimeout;
@@ -189,6 +195,12 @@ public final class KNIMEKafkaConsumer {
          * originated from.
          */
         private boolean m_appendTopic = false;
+
+        /**
+         * <code>True</code> indicates at the end of every execution it is checked for additional messages. Only
+         * required for loop execution.
+         */
+        private boolean m_lookAhead = false;
 
         /** The message offset. */
         private long m_offset = 0;
@@ -206,19 +218,18 @@ public final class KNIMEKafkaConsumer {
          * @param consumerProps the consumer properties
          * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
          * @param isPattern <code>True</code> if topics is a pattern
-         * @param maxEmptyPools the maximum allowed number of successive empty polls before the {@link KafkaConsumer}
-         *            stops its execution
+         * @param infinitePolling <code>True</code> if the consumer shall poll messages infinitely
          * @param conValTimeout the connection validation timeout
          */
         public Builder(final Properties connectionProps, final Properties consumerProps, final String topics,
-            final boolean isPattern, final long maxEmptyPools, final int conValTimeout) {
+            final boolean isPattern, final boolean infinitePolling, final int conValTimeout) {
             m_connectionProps = new Properties();
             m_connectionProps.putAll(connectionProps);
             m_consumerProps = new Properties();
             m_consumerProps.putAll(consumerProps);
             m_topics = topics;
             m_isPattern = isPattern;
-            m_maxEmptyPolls = maxEmptyPools;
+            m_infinitePolling = infinitePolling;
             m_conValTimeout = conValTimeout;
         }
 
@@ -243,6 +254,18 @@ public final class KNIMEKafkaConsumer {
          */
         public Builder appendTopic(final boolean append) {
             m_appendTopic = append;
+            return this;
+        }
+
+        /**
+         * Defines whether at the end of every execution the consumer shall check for additional messages. This is only
+         * required if the Consumer is executed in a loop.
+         *
+         * @param lookAhead <code>True</code> if the consumer shall look ahead at the end of every execution
+         * @return the builder itself
+         */
+        public Builder lookAhead(final boolean lookAhead) {
+            m_lookAhead = lookAhead;
             return this;
         }
 
@@ -348,72 +371,69 @@ public final class KNIMEKafkaConsumer {
      */
     public void execute(final ExecutionContext exec, final RowOutput output) throws Exception {
         boolean done = false;
-        long noRecordsCount = 0;
         long numOfPolledRec = 0;
         // map used for syncing
         final Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
 
+        // init the consumer
+        initConsumer();
+
         // while there are more messages and we were able to reconnect to Kafka
         while (!done) {
-            try {
-                // check for user interrupted
-                exec.checkCanceled();
+            // check for user interrupted
+            exec.checkCanceled();
 
-                // reset offsetmap
-                offsetMap.clear();
+            // reset offsetmap
+            offsetMap.clear();
 
-                // init the consumer
-                initConsumer();
+            // poll the messages
+            final ConsumerRecords<Long, String> consumerRecords = m_consumer.poll(m_pollTimeout);
 
-                // poll the messages
-                final ConsumerRecords<Long, String> consumerRecords = m_consumer.poll(m_pollTimeout);
-
-                // check if we have polled messages no records for more than the allowed number of times
-                if (consumerRecords.count() == 0) {
-                    // break the loop if necessary
-                    done = m_maxEmptyPolls >= 0 && ++noRecordsCount > m_maxEmptyPolls;
-                    // set the starved flag to true (indicates that there were no more messages)
-                    m_starved = done;
-                    continue;
-                }
-
-                // if we found new messages reset the counter
-                noRecordsCount = 0;
-
-                // push all messages to the output table
-                for (final ConsumerRecord<Long, String> record : consumerRecords) {
-                    output.push(convert(record));
-                    // add the offset to the map
-                    offsetMap.put(new TopicPartition(record.topic(), record.partition()),
-                        new OffsetAndMetadata(record.offset() + 1));
-                    // if the number of messages we pushed equals the batch size we stop
-                    // a negative batch size indicates that we will only stop if the
-                    // consumer starved
-                    if (m_batchSize > 0 && ++numOfPolledRec == m_batchSize) {
-                        done = true;
-                        break;
-                    }
-                    // prevent overflow
-                    if (numOfPolledRec == Long.MAX_VALUE) {
-                        numOfPolledRec = 0;
-                    }
-                }
-
-                // commit the offsets w.r.t. to the processed messages
-                m_consumer.commitSync(offsetMap);
-
-            } catch (final InterruptException e) {
-                // InterruptException precedes CancledExecution therefore continue here
-                // first call in the loop will cause CanceledExecutionException
+            // check if we have polled messages no records for more than the allowed number of times
+            if (consumerRecords.count() == 0) {
+                // break the loop if necessary
+                done = !m_infinitePolling;
+                // set the starved flag to true (indicates that there were no more messages)
+                m_starved = done;
                 continue;
-            } catch (final CanceledExecutionException e) {
-                throw e;
-            } catch (final Exception e) {
-                throw e;
             }
+
+            // push all messages to the output table
+            for (final ConsumerRecord<Long, String> record : consumerRecords) {
+                output.push(convert(record));
+                // add the offset to the map
+                offsetMap.put(new TopicPartition(record.topic(), record.partition()),
+                    new OffsetAndMetadata(record.offset() + 1));
+                // if the number of messages we pushed equals the batch size we stop
+                // a negative batch size indicates that we will only stop if the
+                // consumer starved (note that no integer overflow can occur here)
+                if (m_batchSize > 0 && ++numOfPolledRec == m_batchSize) {
+                    done = true;
+                    break;
+                }
+            }
+            // commit the offsets w.r.t. to the processed messages
+            m_consumer.commitSync(offsetMap);
+        }
+        // only look ahead if consumer hasn't starved yet and is not executed in infinite mode
+        if (!m_infinitePolling && !m_starved && m_lookAhead) {
+            m_starved = lookAhead(offsetMap);
         }
         // close the output
         output.close();
+    }
+
+    /**
+     * @param offsetMap
+     * @return
+     */
+    private boolean lookAhead(final Map<TopicPartition, OffsetAndMetadata> offsetMap) {
+        for (Entry<TopicPartition, Long> entry : m_consumer.endOffsets(offsetMap.keySet()).entrySet()) {
+            if (entry.getValue() != offsetMap.get(entry.getKey()).offset()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

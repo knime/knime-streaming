@@ -72,6 +72,11 @@ public final class KafkaConnectionValidator {
     /** The connection exception. */
     private static final String CONNECTION_EXCEPTION = "Cannot connect to the server.";
 
+    /** Constructor. */
+    private KafkaConnectionValidator() {
+        // ensure nobody instantiates this class
+    }
+
     /**
      * Test if the entered properties allow to connect to the server.
      *

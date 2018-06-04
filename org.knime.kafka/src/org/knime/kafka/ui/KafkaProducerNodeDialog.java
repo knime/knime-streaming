@@ -48,14 +48,31 @@
  */
 package org.knime.kafka.ui;
 
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.util.Arrays;
 import java.util.List;
 
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.JPanel;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+
 import org.knime.core.data.StringValue;
+import org.knime.core.node.NodeSettingsRO;
+import org.knime.core.node.NotConfigurableException;
 import org.knime.core.node.defaultnodesettings.DialogComponent;
+import org.knime.core.node.defaultnodesettings.DialogComponentBoolean;
+import org.knime.core.node.defaultnodesettings.DialogComponentButtonGroup;
 import org.knime.core.node.defaultnodesettings.DialogComponentColumnNameSelection;
+import org.knime.core.node.defaultnodesettings.DialogComponentNumberEdit;
 import org.knime.core.node.defaultnodesettings.DialogComponentString;
+import org.knime.core.node.defaultnodesettings.SettingsModelString;
+import org.knime.core.node.port.PortObjectSpec;
 import org.knime.kafka.settings.SettingsModelKafkaProducer;
+import org.knime.kafka.settings.SettingsModelKafkaProducer.TransactionCommitOption;
 
 /**
  * The node dialog containing all relevant settings for the Kafka producer nodes.
@@ -65,11 +82,38 @@ import org.knime.kafka.settings.SettingsModelKafkaProducer;
  */
 public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<SettingsModelKafkaProducer> {
 
+    /** The transaction tab name. */
+    private static final String TRANSACTION_TAB_NAME = "Transaction Settings";
+
+    /** The transaction commit options title */
+    private static final String TRANS_COMMIT_OPTIONS_TITLE = "Transaction Commit Options";
+
     /** The topics component label. */
     private static final String TOPICS_COMP_LABEL = "Topics";
 
     /** The message column component label. */
     private static final String MESSAGE_COLUMN_COMP_LABEL = "Message column";
+
+    /** The use transaction component label. */
+    private static final String USE_TRANSACTIONS = "Use transactions";
+
+    /** The transaction id component label. */
+    private static final String TRANSACTION_ID = "Transaction ID";
+
+    /** The transaction commit interval component label. */
+    private static final String TRANSACTION_COMMIT_INTERVAL = "Batch size";
+
+    /** The use transaction dialog component. */
+    private DialogComponentBoolean m_useTrans;
+
+    /** The transaction id dialog component. */
+    private DialogComponentString m_transID;
+
+    /** The transaction commit interval dialog component. */
+    private DialogComponentNumberEdit m_transCommitInterval;
+
+    /** The transaction commit option dialog component. */
+    private DialogComponentButtonGroup m_transCommitOption;
 
     /**
      * Constructor.
@@ -78,6 +122,78 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
      */
     public KafkaProducerNodeDialog(final SettingsModelKafkaProducer kafkaSettings) {
         super(kafkaSettings);
+        addTabAt(1, TRANSACTION_TAB_NAME, createTransactionPanel());
+        toggleTransaction();
+        addListeners();
+        registerDialogComponent(m_useTrans, m_transID, m_transCommitInterval, m_transCommitOption);
+    }
+
+    /**
+     * @return
+     */
+    private JPanel createTransactionPanel() {
+        final JPanel panel = new JPanel(new GridBagLayout());
+        final GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.LINE_START;
+        gbc.weightx = 0;
+        gbc.weighty = 0;
+        gbc.gridwidth = 1;
+        gbc.insets = new Insets(0, 5, 0, 0);
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.gridy = 0;
+
+        m_useTrans = new DialogComponentBoolean(getModel().getUseTransactionsSettingsModel(), USE_TRANSACTIONS);
+        panel.add(m_useTrans.getComponentPanel(), gbc);
+        ++gbc.gridy;
+
+        m_transID = new DialogComponentString(getModel().getTransactionIdSettingsModel(), TRANSACTION_ID, true,
+            DEFAULT_INPUT_COMP_WIDTH);
+        panel.add(m_transID.getComponentPanel(), gbc);
+        ++gbc.gridy;
+
+        gbc.insets = new Insets(5, 5, 0, 0);
+        panel.add(createCommitOptionsPanel(), gbc);
+
+        // create component to ensure that the components are shown at the top
+        // left corner
+        ++gbc.gridy;
+        gbc.weightx = 1;
+        gbc.weighty = 1;
+        gbc.fill = GridBagConstraints.BOTH;
+
+        panel.add(Box.createGlue(), gbc);
+
+        // return the panel
+        return panel;
+    }
+
+    private JPanel createCommitOptionsPanel() {
+        final JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(
+            BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), TRANS_COMMIT_OPTIONS_TITLE));
+
+        final GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.LINE_START;
+        gbc.weightx = 0;
+        gbc.weighty = 0;
+        gbc.gridwidth = 1;
+        gbc.insets = new Insets(0, 5, 0, 0);
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.gridy = 0;
+        m_transCommitOption =
+            new DialogComponentButtonGroup(getModel().getTransactionCommitOptionSettingsModel(), false, null, //
+                Arrays.stream(TransactionCommitOption.values())//
+                    .map(opt -> opt.toString())//
+                    .toArray(String[]::new)//
+            );
+        panel.add(m_transCommitOption.getComponentPanel(), gbc);
+        ++gbc.gridy;
+
+        m_transCommitInterval = new DialogComponentNumberEdit(getModel().getTransactionCommitIntervalSettingsModel(),
+            TRANSACTION_COMMIT_INTERVAL);
+        panel.add(m_transCommitInterval.getComponentPanel(), gbc);
+
+        return panel;
     }
 
     /**
@@ -86,6 +202,8 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
     @SuppressWarnings("unchecked")
     @Override
     protected List<DialogComponent> getSettingComponents() {
+
+        // append the additional dialog components
         final List<DialogComponent> comps = super.getSettingComponents();
         comps.addAll(Arrays.asList(new DialogComponent[]{ //
             new DialogComponentString(getModel().getTopicSettingsModel(), TOPICS_COMP_LABEL, true,
@@ -95,4 +213,55 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
         }));
         return comps;
     }
+
+    /**
+     * Adds the listeners that disable and enable the options.
+     */
+    private void addListeners() {
+        m_transCommitOption.getModel().addChangeListener(new ChangeListener() {
+
+            @Override
+            public void stateChanged(final ChangeEvent e) {
+                toggleTransactionOption();
+            }
+
+        });
+
+        m_useTrans.getModel().addChangeListener(new ChangeListener() {
+
+            @Override
+            public void stateChanged(final ChangeEvent e) {
+                toggleTransaction();
+            }
+        });
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void loadSettingsFrom(final NodeSettingsRO settings, final PortObjectSpec[] specs)
+        throws NotConfigurableException {
+        super.loadSettingsFrom(settings, specs);
+        toggleTransaction();
+    }
+
+    private void toggleTransaction() {
+        final boolean sel = m_useTrans.isSelected();
+        m_transID.getModel().setEnabled(sel);
+        m_transCommitOption.getModel().setEnabled(sel);
+        toggleTransactionOption();
+    }
+
+    private void toggleTransactionOption() {
+        if (!m_transCommitOption.getModel().isEnabled()) {
+            m_transCommitInterval.getModel().setEnabled(false);
+        } else if (((SettingsModelString)m_transCommitOption.getModel()).getStringValue()
+            .equals(TransactionCommitOption.TABLE_END.toString())) {
+            m_transCommitInterval.getModel().setEnabled(false);
+        } else {
+            m_transCommitInterval.getModel().setEnabled(true);
+        }
+    }
+
 }

@@ -80,8 +80,8 @@ final class LoopStartKafkaDialogPane extends AbstractConsumerNodeDialog<Settings
     @Override
     protected List<DialogComponent> getSettingComponents() {
         final List<DialogComponent> comps = super.getSettingComponents();
-        comps.add(new DialogComponentNumberEdit(LoopStartKafkaNodeModel.createBatchSizeModel(), BATCH_SIZE_COMP_LABEL,
-            DEFAULT_INPUT_COMP_WIDTH));
+        comps.add(5, new DialogComponentNumberEdit(LoopStartKafkaNodeModel.createBatchSizeModel(),
+            BATCH_SIZE_COMP_LABEL, DEFAULT_INPUT_COMP_WIDTH));
         return comps;
     }
 

@@ -51,6 +51,7 @@ package org.knime.kafka.ui;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -125,17 +126,27 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
     }
 
     /**
-     * Adds a component to the given panel and to the components list.
+     * Adds a component to the given panel and registers it.
      *
      * @param panel the panel to add to
      * @param gbc the grid bag constraints
      * @param toAdd the dialog component to add
      */
-    protected final void addComponentToPanel(final JPanel panel, final GridBagConstraints gbc,
+    private void addComponentToPanel(final JPanel panel, final GridBagConstraints gbc,
         final DialogComponent toAdd) {
         gbc.gridy++;
         panel.add(toAdd.getComponentPanel(), gbc);
-        m_components.add(toAdd);
+        registerDialogComponent(toAdd);
+    }
+
+    /**
+     * Allows to register dialog components so that they automatically saved and loaded.
+     *
+     * @param comp the component to register
+     */
+    protected final void registerDialogComponent(final DialogComponent... comp) {
+        Arrays.stream(comp)//
+            .forEach(m_components::add);
     }
 
     /**
@@ -153,6 +164,7 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
         gbc.gridwidth = 1;
         gbc.insets = new Insets(0, 5, 0, 0);
         gbc.fill = GridBagConstraints.NONE;
+        gbc.gridy = 0;
 
         // get the settings and add them to the panel
         for (final DialogComponent comp : getSettingComponents()) {
@@ -211,7 +223,7 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
      * {@inheritDoc}
      */
     @Override
-    protected final void loadSettingsFrom(final NodeSettingsRO settings, final PortObjectSpec[] specs)
+    protected void loadSettingsFrom(final NodeSettingsRO settings, final PortObjectSpec[] specs)
         throws NotConfigurableException {
         for (final DialogComponent comp : m_components) {
             comp.loadSettingsFrom(settings, specs);

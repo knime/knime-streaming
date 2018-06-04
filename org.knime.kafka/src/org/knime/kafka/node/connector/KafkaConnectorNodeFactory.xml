@@ -26,7 +26,9 @@
 		<tab name="Advanced Settings">
 			<option name="Advanced Settings">
 				Allows to specify additional connection related options, e.g., timeouts
-				and Kerberos authentication.
+				and Kerberos authentication. For further details on the individual options
+				see the tooltip or consult the official 
+				<a href="https://kafka.apache.org/documentation/">Kafka documentation</a>.				
 			</option>
 
 		</tab>

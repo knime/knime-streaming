@@ -77,6 +77,7 @@ import org.knime.kafka.algorithms.KNIMEKafkaProducer;
 import org.knime.kafka.port.KafkaConnectorPortObject;
 import org.knime.kafka.port.KafkaConnectorPortSpec;
 import org.knime.kafka.settings.SettingsModelKafkaProducer;
+import org.knime.kafka.settings.SettingsModelKafkaProducer.TransactionCommitOption;
 
 /**
  * Node model for sending messages to Kafka.
@@ -94,6 +95,13 @@ final class KafkaProducerNodeModel extends NodeModel {
 
     /** The missing message column exception. */
     private static final String MISSING_MSG_COL_EXCEPTION = "Please select a message column";
+
+    /** The missing transaction id exception. */
+    private static final String MISSING_TRANSACTION_ID = "The Transaction ID cannot be empty";
+
+    /** The potentially missing transaction commit warning . */
+    private static final String TRANSACTION_COMMIT_WARNING =
+        "If this is an endless stream the transaction will never be committed";
 
     /** The Kafka producer settings model. */
     private SettingsModelKafkaProducer m_producerSettings;
@@ -154,6 +162,15 @@ final class KafkaProducerNodeModel extends NodeModel {
             throw new InvalidSettingsException(EMPTY_TOPICS_EXCEPTION);
         }
 
+        // check if the transaction ID is set
+        if (m_producerSettings.useTransactions()
+            && (m_producerSettings.getTransactionID() == null || m_producerSettings.getTransactionID().isEmpty())) {
+            throw new InvalidSettingsException(MISSING_TRANSACTION_ID);
+        }
+
+        // test if options are controlled via flow var
+        TransactionCommitOption.getEnum(m_producerSettings.getTransactionCommitOptionSettingsModel().getStringValue());
+
         // set the blocked properties
         m_producerSettings.setBlockedProps(((KafkaConnectorPortSpec)inSpecs[1]).getBlockedProperties());
 
@@ -182,6 +199,11 @@ final class KafkaProducerNodeModel extends NodeModel {
             @Override
             public void runFinal(final PortInput[] inputs, final PortOutput[] outputs, final ExecutionContext exec)
                 throws Exception {
+                // set a warning if this node is executed in streaming mode but only commits transactions at the end
+                // of its execution
+                if (m_producerSettings.useTransactions() && m_producerSettings.getTransactionCommitInterval() <= 0) {
+                    setWarningMessage(TRANSACTION_COMMIT_WARNING);
+                }
                 final RowInput input = (RowInput)inputs[0];
                 KafkaConnectorPortSpec spec = ((KafkaConnectorPortSpec)inSpecs[1]);
                 run(input, spec.getConnectionProperties(), spec.getConnectionValiditionTimeout(), exec);
@@ -203,7 +225,8 @@ final class KafkaProducerNodeModel extends NodeModel {
     private void run(final RowInput input, final Properties connectionProps, final int conValTimeout,
         final ExecutionContext exec) throws Exception {
         final KNIMEKafkaProducer producer = new KNIMEKafkaProducer(connectionProps, m_producerSettings.getProperties(),
-            m_producerSettings.getTopics(), m_producerSettings.getMessageColumn(), conValTimeout);
+            m_producerSettings.getTopics(), m_producerSettings.getMessageColumn(), conValTimeout,
+            m_producerSettings.useTransactions(), m_producerSettings.getTransactionCommitInterval());
         try {
             // execute the producer
             producer.execute(exec, input);

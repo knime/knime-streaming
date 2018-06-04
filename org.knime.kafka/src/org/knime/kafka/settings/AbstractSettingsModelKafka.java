@@ -48,6 +48,7 @@
  */
 package org.knime.kafka.settings;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
@@ -96,7 +97,8 @@ public abstract class AbstractSettingsModelKafka {
     abstract protected Properties getBasicProperties();
 
     /**
-     * Sets the proper instance of {@link SettingsModelKafka} and adds it to the models list.
+     * Sets the proper instance of {@link SettingsModelKafka} and adds it to the models list. Has to be called in the
+     * constructor.
      */
     abstract protected void setAndAddKafkaModel();
 
@@ -105,9 +107,8 @@ public abstract class AbstractSettingsModelKafka {
      *
      * @param toAdd the model to be added
      */
-    protected final void addModel(final SettingsModel toAdd) {
-        m_models.add(toAdd);
-
+    protected final void addModel(final SettingsModel... toAdd) {
+        Arrays.stream(toAdd).forEach(m_models::add);
     }
 
     /**
@@ -172,7 +173,7 @@ public abstract class AbstractSettingsModelKafka {
      */
     public final Set<String> getUsedProperties() {
         Set<String> usedProps = m_advancedProps.stream()//
-            .map(k -> k.getKey())//
+            .map(KafkaProperty::getKey)//
             .collect(Collectors.toSet());
         getBasicProperties().keySet().stream()//
             .map(k -> (String)k)//

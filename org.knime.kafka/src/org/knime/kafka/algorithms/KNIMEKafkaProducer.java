@@ -59,7 +59,6 @@ import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.StringValue;
 import org.knime.core.node.BufferedDataTable;
-import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.streamable.DataTableRowInput;
@@ -93,8 +92,11 @@ public final class KNIMEKafkaProducer {
     /** The kafkaProducer. */
     private KafkaProducer<Long, String> m_producer;
 
-    /** <code>True</code> if the execution was canceled by the user, or the producer thread was interrupted. */
-    private boolean m_wasInterrupted;
+    /** <code>True</code> if the producer is executed in transaction mode. */
+    private final boolean m_transactionMode;
+
+    /** The commit interval. -1 means that no intermediate transaction commits will be triggered. */
+    private final int m_commitInterval;
 
     /**
      * Constructor.
@@ -104,9 +106,12 @@ public final class KNIMEKafkaProducer {
      * @param topic a string representing a list of topics to the send the messages to
      * @param msgCol the name of the column storing that have to be send
      * @param conValTimeout the connection validation timeout
+     * @param transactionMode defines whether whether messages have to be send transaction wise or not
+     * @param commitInterval triggers a transaction commit after the specified number of read input rows (-1 results in
+     *            a single transaction commit after the whole input has been processed)
      */
     public KNIMEKafkaProducer(final Properties connectionProps, final Properties producerProps, final String topic,
-        final String msgCol, final int conValTimeout) {
+        final String msgCol, final int conValTimeout, final boolean transactionMode, final int commitInterval) {
         m_connectionProps = new Properties();
         m_connectionProps.putAll(connectionProps);
         m_props = new Properties();
@@ -115,7 +120,8 @@ public final class KNIMEKafkaProducer {
         m_topic = Arrays.asList(topic.trim().split("\\s*,\\s*", -1));
         m_msgCol = msgCol;
         m_conValTimeout = conValTimeout;
-        m_wasInterrupted = false;
+        m_transactionMode = transactionMode;
+        m_commitInterval = commitInterval;
     }
 
     /**
@@ -158,13 +164,20 @@ public final class KNIMEKafkaProducer {
         // initialize the producer
         initProducer();
 
+        if (m_transactionMode) {
+            m_producer.initTransactions();
+            m_producer.beginTransaction();
+        }
         // the currently processed row
         DataRow row;
+
+        int numSendRec = 0;
+
         while ((row = input.poll()) != null) {
             try {
                 exec.checkCanceled();
 
-                // udpate progress
+                // update progress
                 final String rowKey = row.getKey().toString();
                 final String msg;
                 ++rowNo;
@@ -181,19 +194,31 @@ public final class KNIMEKafkaProducer {
                     continue;
                 }
                 final String message = ((StringValue)cell).getStringValue();
-
                 // send the message to all topics
                 for (final String topic : m_topic) {
                     final ProducerRecord<Long, String> record = new ProducerRecord<>(topic, message);
                     m_producer.send(record).get();
                 }
-            } catch (final InterruptedException | CanceledExecutionException e) {
-                m_wasInterrupted = true;
+                if (m_transactionMode && m_commitInterval > 0 && ++numSendRec == m_commitInterval) {
+                    numSendRec = 0;
+                    m_producer.commitTransaction();
+                    m_producer.beginTransaction();
+                }
+            } catch (final Exception e) {
+                // abort the transaction if necessary
+                if (m_transactionMode) {
+                    m_producer.abortTransaction();
+                }
                 throw (e);
             }
         }
-        // flush the output
-        m_producer.flush();
+        // finish the transaction / flush the output
+        if (m_transactionMode) {
+            m_producer.commitTransaction();
+        } else {
+            m_producer.flush();
+        }
+
     }
 
     /**
@@ -212,8 +237,13 @@ public final class KNIMEKafkaProducer {
     public void close() {
         // if the producer is not null
         if (m_producer != null) {
-            // check its execution was interrupted and remove the flag if necessary
-            if (m_wasInterrupted) {
+            // TODO: If the nodes was executed in streaming mode
+            // a canceled execution exception will mark the
+            // thread interrupted, causing KafkaProducer to log an
+            // error during close. Removing this flag stops the logging.
+            // However a better solution would be to change the logging
+            // level of the KafkaProducer in this case.
+            if (Thread.currentThread().isInterrupted()) {
                 Thread.interrupted();
             }
             // close the producer

@@ -19,16 +19,6 @@
 			<option name="Group ID">
 				A unique string that identifies the consumer group this consumer belongs to. 
 			</option>
-			<option name="Poll timeout (ms)">
-				The time, in milliseconds, spent waiting in poll if data is not available in the buffer.
-	            If 0, returns immediately with any records that are currently available in the buffer.
-			</option>
-			<option name="Max empty polls (-1 for infinite)">
-				Defines after how many successive empty polls the node is allowed to finish its execution.
-				<br/>
-				If the value is set to -1, this loop will never terminate. In this case the relevant
-				timeouts should be adapted in order to reduce overhead due to re-connecting and rebalancing.
-			</option>
 			<option name="Topics">
 				<p>
 				A pattern or list of topics the consumer has to subscribe to.
@@ -48,18 +38,36 @@
 				containing information about the name of the topic the message/row originates
 				from.
 			</option>
+			<option name="Batch size">
+				The size of each batch, i.e., number of rows in the output table.
+			</option>
+			<option name="Stop Execution">
+				Determines how to stop the execution of this node.
+				<ul>
+					<li>
+						<b>Never</b> Ensures that the loop execution never
+						stops. 
+					</li>
+					<li>
+						<b>Once message queue is empty</b> Stops the execution once there
+						are no new messages available
+					</li>
+				</ul>
+			</option>
+			<option name="Poll timeout (ms)">
+				The time, in milliseconds, spent waiting in poll request if data is not immediately available.
+			</option>
 			<option name="Convert message to JSON">
 				If this option is selected the consumed messages are converted from String
 				to JSON.
-			</option>
-			<option name="Batch size">
-				The size of each batch, i.e., number of rows in the output table.
 			</option>
 		</tab>
 		<tab name="Advanced Settings">
 			<option name="Advanced Settings">
 				Allows to specify additional consumer related options, e.g., poll interval
-				and session timeout.	.
+				and session timeout.  For further details on the individual options
+				see the tooltip or consult the official
+				<a href="https://kafka.apache.org/documentation/">Kafka documentation</a>.
 			</option>
 		</tab>
 	</fullDescription>

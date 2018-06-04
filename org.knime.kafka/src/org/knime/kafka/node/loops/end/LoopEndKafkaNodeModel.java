@@ -72,6 +72,7 @@ import org.knime.kafka.algorithms.KNIMEKafkaProducer;
 import org.knime.kafka.port.KafkaConnectorPortObject;
 import org.knime.kafka.port.KafkaConnectorPortSpec;
 import org.knime.kafka.settings.SettingsModelKafkaProducer;
+import org.knime.kafka.settings.SettingsModelKafkaProducer.TransactionCommitOption;
 
 /**
  * Node model for producing Kafka messages in a loop scenario.
@@ -79,7 +80,7 @@ import org.knime.kafka.settings.SettingsModelKafkaProducer;
  * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
  *
  */
-final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
+public final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
 
     /** The empty topics exception text. */
     private static final String EMPTY_TOPICS_EXCEPTION = "The <Topics> cannot be empty";
@@ -93,6 +94,9 @@ final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
 
     /** The missing message column exception. */
     private static final String MISSING_MSG_COL_EXCEPTION = "Please select a message column";
+
+    /** The missing transaction id exception. */
+    private static final String MISSING_TRANSACTION_ID = "The Transaction ID cannot be empty";
 
     /** The Kafka producer settings model. */
     private SettingsModelKafkaProducer m_producerSettings;
@@ -154,6 +158,15 @@ final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
             throw new InvalidSettingsException(EMPTY_TOPICS_EXCEPTION);
         }
 
+        // check if the transaction ID is set
+        if (m_producerSettings.useTransactions()
+            && (m_producerSettings.getTransactionID() == null || m_producerSettings.getTransactionID().isEmpty())) {
+            throw new InvalidSettingsException(MISSING_TRANSACTION_ID);
+        }
+
+        // test if options are controlled via flow var
+        TransactionCommitOption.getEnum(m_producerSettings.getTransactionCommitOptionSettingsModel().getStringValue());
+
         // set the blocked properties
         m_producerSettings.setBlockedProps(((KafkaConnectorPortSpec)inSpecs[1]).getBlockedProperties());
 
@@ -195,7 +208,8 @@ final class LoopEndKafkaNodeModel extends NodeModel implements LoopEndNode {
         final int conValTimeout) {
         if (m_kafkaProduer == null) {
             m_kafkaProduer = new KNIMEKafkaProducer(connectionProps, producerProps, m_producerSettings.getTopics(),
-                m_producerSettings.getMessageColumn(), conValTimeout);
+                m_producerSettings.getMessageColumn(), conValTimeout, m_producerSettings.useTransactions(),
+                m_producerSettings.getTransactionCommitInterval());
         }
     }
 

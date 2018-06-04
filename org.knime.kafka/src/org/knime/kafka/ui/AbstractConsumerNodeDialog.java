@@ -53,9 +53,11 @@ import java.util.List;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
 import org.knime.core.node.defaultnodesettings.DialogComponentBoolean;
+import org.knime.core.node.defaultnodesettings.DialogComponentButtonGroup;
 import org.knime.core.node.defaultnodesettings.DialogComponentNumberEdit;
 import org.knime.core.node.defaultnodesettings.DialogComponentString;
 import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer;
+import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer.ConsumptionBreakCondition;
 
 /**
  * The node dialog containing the Kafka client most of the components for the consumer nodes.
@@ -94,8 +96,8 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
     /** The convert to JSON component label. */
     private static final String CONVERT_TO_JSON_COMP_LABEL = "Convert message to JSON";
 
-    /** The max empty polls component label. */
-    private static final String MAX_EMPTY_POLLS__COMP_LABEL = "Max empty polls (-1 for infinite):";
+    /** The stop execution border title. */
+    private static final String EXECUTION_BORDER_TITLE = "Stop Execution";
 
     /**
      * {@inheritDoc}
@@ -106,14 +108,21 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
         comps.addAll(Arrays.asList(new DialogComponent[]{ //
             new DialogComponentString(getModel().getGroupIDSettingsModel(), GROUP_ID_COMP_LABEL, false,
                 DEFAULT_INPUT_COMP_WIDTH)//
-            , new DialogComponentNumberEdit(getModel().getPollTimeoutSettingsModel(), POLL_TIMEOUT_COMP_LABEL)//
-            , new DialogComponentNumberEdit(getModel().getMaxEmptyPollsSettingsModel(), MAX_EMPTY_POLLS__COMP_LABEL)//
             , new DialogComponentString(getModel().getTopicsSettingsModel(), TOPICS_COMP_LABEL, true,
                 DEFAULT_INPUT_COMP_WIDTH) //
             , new DialogComponentBoolean(getModel().getTopicPatternSettingsModel(), TOPIC_IS_PATTERN_COMP_LABEL)//
             , new DialogComponentBoolean(getModel().getAppendTopicColumnSettingsModel(), APPEND_TOPIC_COLUMN_COMP_LABEL)//
+            ,
+            new DialogComponentButtonGroup(getModel().getConsumptionBreakConditionSettingsModel(), false,
+                EXECUTION_BORDER_TITLE, Arrays//
+                    .stream(ConsumptionBreakCondition.values())//
+                    .map(opt -> opt.toString())//
+                    .toArray(String[]::new)//
+            )//
+            , new DialogComponentNumberEdit(getModel().getPollTimeoutSettingsModel(), POLL_TIMEOUT_COMP_LABEL)//
             , new DialogComponentBoolean(getModel().getConvertToJSONSettingsModel(), CONVERT_TO_JSON_COMP_LABEL)//
         }));
         return comps;
     }
+
 }

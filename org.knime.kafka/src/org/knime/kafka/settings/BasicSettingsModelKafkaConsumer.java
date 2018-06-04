@@ -48,6 +48,7 @@
  */
 package org.knime.kafka.settings;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -55,8 +56,8 @@ import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.defaultnodesettings.SettingsModelBoolean;
-import org.knime.core.node.defaultnodesettings.SettingsModelLong;
 import org.knime.core.node.defaultnodesettings.SettingsModelLongBounded;
 import org.knime.core.node.defaultnodesettings.SettingsModelString;
 import org.knime.kafka.ui.KafkaModel;
@@ -70,6 +71,60 @@ import org.knime.kafka.ui.KafkaProperty;
  */
 public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSettingsModelKafka {
 
+    /**
+     * Enum specifying the execution break condition.
+     *
+     * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
+     */
+    public enum ConsumptionBreakCondition {
+
+            /** Indicates that the consumer shall never stop polling messages. */
+            NEVER("Never"),
+
+            /** Indicates that the consumer shall stop after a empty poll. */
+            EMPTY_QUEUE("Once message queue is empty");
+
+        /** Missing name exception. */
+        private static final String NAME_MUST_NOT_BE_NULL = "Name must not be null";
+
+        /** IllegalArgumentException prefix. */
+        private static final String ARGUMENT_EXCEPTION_PREFIX = "No ConsumptionBreakCondition constant with name: ";
+
+        private final String m_name;
+
+        /**
+         * Constructor
+         *
+         * @param name the enum name
+         */
+        private ConsumptionBreakCondition(final String name) {
+            m_name = name;
+        }
+
+        @Override
+        public String toString() {
+            return m_name;
+        }
+
+        /**
+         * Returns the enum for a given String
+         *
+         * @param name the enum name
+         * @return the enum
+         * @throws InvalidSettingsException if the given name is not associated with an
+         *             {@link ConsumptionBreakCondition} value
+         */
+        public static ConsumptionBreakCondition getEnum(final String name) throws InvalidSettingsException {
+            if (name == null) {
+                throw new InvalidSettingsException(NAME_MUST_NOT_BE_NULL);
+            }
+            return Arrays.stream(values()).//
+                filter(t -> t.m_name.equals(name))//
+                .findFirst()//
+                .orElseThrow(() -> new InvalidSettingsException(ARGUMENT_EXCEPTION_PREFIX + name));
+        }
+    }
+
     /** Config key of the kafka consumer */
     private static final String CFG_KAFKA_CONSUMER = "kafka-consumer-settings";
 
@@ -78,20 +133,16 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
         Helper4KafkaConfig.getProperties(ConsumerConfig.class);
 
     /** The settings model storing the group id. */
-    private final SettingsModelString m_groupID = new SettingsModelString("groupID", "KNIME");
-
-    /** The settings model storing the number of max empty polls. */
-    private final SettingsModelLong m_maxEmptyPolls =
-        new SettingsModelLongBounded("maxEmptyPolls", 3, -1, Long.MAX_VALUE);
+    private final SettingsModelString m_groupID = new SettingsModelString("group-id", "KNIME");
 
     /** The settings model storing the topic pattern flag. */
-    private final SettingsModelBoolean m_topicPattern = new SettingsModelBoolean("topicPattern", false);
+    private final SettingsModelBoolean m_topicPattern = new SettingsModelBoolean("topic-pattern", false);
 
     /** The settings model storing the convert to JSON flag. */
-    private final SettingsModelBoolean m_convertToJSON = new SettingsModelBoolean("convertToJSON", false);
+    private final SettingsModelBoolean m_convertToJSON = new SettingsModelBoolean("convert-to-JSON", false);
 
     /** The settings model storing the append topic column flag. */
-    private final SettingsModelBoolean m_appendTopicColumn = new SettingsModelBoolean("appendTopicColumn", false);
+    private final SettingsModelBoolean m_appendTopicColumn = new SettingsModelBoolean("append-topic-column", false);
 
     /** The settings model storing the topics / topic pattern. */
     private final SettingsModelString m_topicModel = new SettingsModelString("topic", "");
@@ -100,18 +151,17 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
     private final SettingsModelLongBounded m_pollTimeout =
         new SettingsModelLongBounded("poll-timeout-ms", 1000, 0, Integer.MAX_VALUE);
 
+    /** The settings model storing the consumption break condition. */
+    private final SettingsModelString m_breakCondition =
+        new SettingsModelString("stop-execution", ConsumptionBreakCondition.EMPTY_QUEUE.toString());
+
     /**
      * Constructor.
      */
     protected BasicSettingsModelKafkaConsumer() {
         super(CONSUMER_PROPERTIES);
-        addModel(m_topicModel);
-        addModel(m_groupID);
-        addModel(m_maxEmptyPolls);
-        addModel(m_topicPattern);
-        addModel(m_convertToJSON);
-        addModel(m_appendTopicColumn);
-        addModel(m_pollTimeout);
+        addModel(m_topicModel, m_groupID, m_topicPattern, m_convertToJSON, m_appendTopicColumn, m_pollTimeout,
+            m_breakCondition);
     }
 
     /**
@@ -121,15 +171,6 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      */
     public final SettingsModelString getGroupIDSettingsModel() {
         return m_groupID;
-    }
-
-    /**
-     * Returns the settings model storing the max empty polls policy.
-     *
-     * @return the max empty polls settings model
-     */
-    public final SettingsModelLong getMaxEmptyPollsSettingsModel() {
-        return m_maxEmptyPolls;
     }
 
     /**
@@ -180,10 +221,19 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
     /**
      * Returns the settings model storing the poll timeout.
      *
-     * @return the poll timeout model
+     * @return the poll timeout settings model
      */
     public final SettingsModelLongBounded getPollTimeoutSettingsModel() {
         return m_pollTimeout;
+    }
+
+    /**
+     * Returns the settings model storing the consumption break condition.
+     *
+     * @return the consumption break condition settings model
+     */
+    public final SettingsModelString getConsumptionBreakConditionSettingsModel() {
+        return m_breakCondition;
     }
 
     /**
@@ -209,8 +259,8 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      *
      * @return number of empty polls or -1 for unlimited
      */
-    public final long getMaxEmptyPolls() {
-        return m_maxEmptyPolls.getLongValue();
+    public final boolean endlessStreaming() {
+        return m_breakCondition.getStringValue().equals(ConsumptionBreakCondition.NEVER.toString());
     }
 
     /**

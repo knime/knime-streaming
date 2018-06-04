@@ -21,15 +21,42 @@
 				A list of topics the producer sends the messages to. The topics list has to be in the
 				form <tt>topic1,topic2,...</tt>.
 			</option>
-			<option name="Message Column">
+			<option name="Message column">
 				Specifies the column containing the messages that have to be send to Kafka. This
 				column can be either of type String or JSON. 
 			</option>
 		</tab>
+		<tab name="Transaction Settings">
+			<option name="Use transaction">
+				Specifies whether the messages have to be send in a transactional fashion or not.
+			</option>
+			<option name="Transaction ID">
+				The transaction id of the message producer. This id has to be unique.
+			</option>
+			<option name="Transaction Commit Options">
+				Allows to specify the number of messages send per transaction.
+					<ul>
+						<li>
+							<b>Input end</b> This option ensures that the whole
+							input is send in a single transaction 
+						</li>
+						<li>
+							<b>Batchwise</b> This option sends a fixed number of messages
+							per transaction
+						</li>
+					</ul>
+			</option>
+			<option name="Batch size">
+				Defines the size of each transaction batch. Larger values result in less
+				transactions but might stall message consumption.
+			</option>	
+		</tab>
 		<tab name="Advanced Settings">
 			<option name="Advanced Settings">
 				Allows to specify additional producer related options, e.g., request timeout
-				and number of retries.				.
+				and number of retries.  For further details on the individual options
+				see the tooltip or consult the official
+				<a href="https://kafka.apache.org/documentation/">Kafka documentation</a>.
 			</option>
 		</tab>
 	</fullDescription>

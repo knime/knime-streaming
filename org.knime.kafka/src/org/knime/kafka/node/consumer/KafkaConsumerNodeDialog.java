@@ -78,7 +78,7 @@ final class KafkaConsumerNodeDialog extends AbstractConsumerNodeDialog<SettingsM
     protected List<DialogComponent> getSettingComponents() {
         final List<DialogComponent> comps = super.getSettingComponents();
         // add this after the poll timeout
-        comps.add(3, new DialogComponentNumberEdit(getModel().getMaxReqRecordsModel(), MAX_NUM_RECORDS_PER_POLL,
+        comps.add(5, new DialogComponentNumberEdit(getModel().getMaxReqRecordsModel(), MAX_NUM_RECORDS_PER_POLL,
             DEFAULT_INPUT_COMP_WIDTH));
         return comps;
     }

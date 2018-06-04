@@ -65,7 +65,7 @@ import org.knime.kafka.ui.KafkaProperty;
 public abstract class AbstractClientIDSettingsModelKafka extends AbstractSettingsModelKafka {
 
     /** The settings model storing the client id. */
-    private final SettingsModelString m_clientID = new SettingsModelString("client-ID", "KNIME");
+    private final SettingsModelString m_clientID = new SettingsModelString("client-id", "KNIME");
 
     /**
      * Constructor.

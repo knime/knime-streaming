@@ -74,6 +74,7 @@ import org.knime.kafka.algorithms.KNIMEKafkaConsumer;
 import org.knime.kafka.port.KafkaConnectorPortObject;
 import org.knime.kafka.port.KafkaConnectorPortSpec;
 import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer;
+import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer.ConsumptionBreakCondition;
 import org.knime.kafka.settings.SettingsModelKafkaConsumer;
 
 /**
@@ -113,7 +114,7 @@ final class KafkaConsumerNodeModel extends NodeModel {
     @Override
     protected PortObject[] execute(final PortObject[] inObjects, final ExecutionContext exec) throws Exception {
         // test for non-streaming compatibility
-        if (m_consumerSettings.getMaxEmptyPolls() < 0) {
+        if (m_consumerSettings.endlessStreaming()) {
             throw new InvalidSettingsException(INFINITE_LISTENING_EXCEPTION);
         }
 
@@ -144,7 +145,7 @@ final class KafkaConsumerNodeModel extends NodeModel {
     private KNIMEKafkaConsumer getConsumer(final Properties connectionProps, final Properties consumerProps,
         final int conValTimeout) {
         return new KNIMEKafkaConsumer.Builder(connectionProps, consumerProps, m_consumerSettings.getTopic(),
-            m_consumerSettings.useTopicPattern(), m_consumerSettings.getMaxEmptyPolls(), conValTimeout)//
+            m_consumerSettings.useTopicPattern(), m_consumerSettings.endlessStreaming(), conValTimeout)//
                 .appendTopic(m_consumerSettings.appendTopic())//
                 .convertToJSON(m_consumerSettings.convertToJSON())//
                 .setBatchSize(-1)//
@@ -173,6 +174,11 @@ final class KafkaConsumerNodeModel extends NodeModel {
         if (m_consumerSettings.getTopic().isEmpty()) {
             throw new InvalidSettingsException(EMPTY_TOPICS_EXCEPTION);
         }
+
+        // test if options are controlled via flow var
+        ConsumptionBreakCondition
+            .getEnum(m_consumerSettings.getConsumptionBreakConditionSettingsModel().getStringValue());
+
         return new DataTableSpec[]{KNIMEKafkaConsumer.createOutTableSpec(m_consumerSettings.convertToJSON(),
             m_consumerSettings.appendTopic())};
     }

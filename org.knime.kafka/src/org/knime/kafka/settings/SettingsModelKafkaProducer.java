@@ -48,6 +48,8 @@
  */
 package org.knime.kafka.settings;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -55,6 +57,10 @@ import java.util.Set;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.LongSerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.knime.core.node.InvalidSettingsException;
+import org.knime.core.node.defaultnodesettings.SettingsModelBoolean;
+import org.knime.core.node.defaultnodesettings.SettingsModelInteger;
+import org.knime.core.node.defaultnodesettings.SettingsModelIntegerBounded;
 import org.knime.core.node.defaultnodesettings.SettingsModelString;
 import org.knime.kafka.ui.KafkaModel;
 import org.knime.kafka.ui.KafkaProperty;
@@ -67,26 +73,91 @@ import org.knime.kafka.ui.KafkaProperty;
  */
 public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsModelKafka {
 
+    /**
+     * Enum specifying the transaction commit options.
+     *
+     * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
+     */
+    public enum TransactionCommitOption {
+
+            /** Indicates that the transaction has to be committed at the end of the input. */
+            TABLE_END("Input end"),
+
+            /** Indicates that the transaction has to be committed after a batch of rows. */
+            INTERVAL("Batchwise");
+
+        /** Missing name exception. */
+        private static final String NAME_MUST_NOT_BE_NULL = "Name must not be null";
+
+        /** IllegalArgumentException prefix. */
+        private static final String ARGUMENT_EXCEPTION_PREFIX = "No TransactionCommitOption constant with name: ";
+
+        private final String m_name;
+
+        /**
+         * Constructor
+         *
+         * @param name the enum name
+         */
+        private TransactionCommitOption(final String name) {
+            m_name = name;
+        }
+
+        @Override
+        public String toString() {
+            return m_name;
+        }
+
+        /**
+         * Returns the enum for a given String
+         *
+         * @param name the enum name
+         * @return the enum
+         * @throws InvalidSettingsException if the given name is not associated with an {@link TransactionCommitOption}
+         *             value
+         */
+        public static TransactionCommitOption getEnum(final String name) throws InvalidSettingsException {
+            if (name == null) {
+                throw new InvalidSettingsException(NAME_MUST_NOT_BE_NULL);
+            }
+            return Arrays.stream(values()).filter(t -> t.m_name.equals(name)).findFirst()
+                .orElseThrow(() -> new InvalidSettingsException(ARGUMENT_EXCEPTION_PREFIX + name));
+        }
+    }
+
     /** All Kafka properties concerning the producers. */
-    private static final List<KafkaProperty> PRODUCER_PROPERTIES =
-        Helper4KafkaConfig.getProperties(ProducerConfig.class);
+    private static final List<KafkaProperty> PRODUCER_PROPERTIES = Helper4KafkaConfig.getProperties(
+        ProducerConfig.class, new HashSet<String>(Arrays.asList(new String[]{ProducerConfig.TRANSACTIONAL_ID_CONFIG})));
 
     /** Config key for the Kafka producer. */
     private static final String CFG_KAFKA_PRODUCER = "kafka-producer-settings";
 
     /** The settings model storing the message column. */
-    private final SettingsModelString m_col = new SettingsModelString("messageColumn", null);
+    private final SettingsModelString m_col = new SettingsModelString("message-column", null);
 
     /** The settings model storing the topics. */
     private final SettingsModelString m_topics = new SettingsModelString("topics", "");
+
+    /** The settings model storing the transaction id. */
+    private final SettingsModelString m_transID = new SettingsModelString("transaction-id", "");
+
+    /** The settings model storing the transaction commit interval. */
+    private final SettingsModelInteger m_transCommitInterval =
+        new SettingsModelIntegerBounded("batch-size", 50, 1, Integer.MAX_VALUE);
+
+    /** The settings model storing the use transaction flag. */
+    private final SettingsModelBoolean m_useTrans = new SettingsModelBoolean("use-transactions", false);
+
+    /** The settings model storing the transaction commit option. */
+    private final SettingsModelString m_transCommitOption =
+        new SettingsModelString("transaction-commit-option", TransactionCommitOption.TABLE_END.toString());
 
     /**
      * Constructor.
      */
     public SettingsModelKafkaProducer() {
         super(PRODUCER_PROPERTIES);
-        addModel(m_col);
-        addModel(m_topics);
+        addModel(m_col, m_topics, m_transID, m_transCommitInterval, m_useTrans, m_transCommitOption);
         setAndAddKafkaModel();
     }
 
@@ -118,6 +189,37 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
     }
 
     /**
+     * Returns <code>True</code> if the producer has to be executed in transaction mode.
+     *
+     * @return <code>True</code> if transactional execution is required
+     */
+    public boolean useTransactions() {
+        return m_useTrans.getBooleanValue();
+    }
+
+    /**
+     * Returns the transaction id.
+     *
+     * @return the transaction id
+     */
+    public String getTransactionID() {
+        return m_transID.getStringValue();
+    }
+
+    /**
+     * Returns the transaction commit interval.
+     *
+     * @return the transaction commit interval
+     *
+     */
+    public int getTransactionCommitInterval() {
+        if (m_transCommitOption.getStringValue().equals(TransactionCommitOption.TABLE_END.toString())) {
+            return -1;
+        }
+        return m_transCommitInterval.getIntValue();
+    }
+
+    /**
      * Returns the settings model storing the topics
      *
      * @return the topics settings model
@@ -136,6 +238,42 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
     }
 
     /**
+     * Returns the settings model storing the flag indicating if the producer is executed in transaction mode.
+     *
+     * @return the use transactions settings model
+     */
+    public SettingsModelBoolean getUseTransactionsSettingsModel() {
+        return m_useTrans;
+    }
+
+    /**
+     * Returns the settings model storing the transaction id.
+     *
+     * @return the transaction id settings model
+     */
+    public SettingsModelString getTransactionIdSettingsModel() {
+        return m_transID;
+    }
+
+    /**
+     * Returns the settings model storing the transaction commit interval.
+     *
+     * @return the transaction commit interval settings model
+     */
+    public SettingsModelInteger getTransactionCommitIntervalSettingsModel() {
+        return m_transCommitInterval;
+    }
+
+    /**
+     * Returns the settings model storing the transaction commit option.
+     *
+     * @return the transaction commit option settings model
+     */
+    public SettingsModelString getTransactionCommitOptionSettingsModel() {
+        return m_transCommitOption;
+    }
+
+    /**
      * {@inheritDoc}
      */
     @Override
@@ -143,6 +281,11 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
         final Properties props = super.getBasicProperties();
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, LongSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        // setting this property to null or empty string is not allowed by Kafka, hence we only
+        // set it if required and blacklist the entry (see PRODUCER_PROPERTIES constructor)
+        if (m_useTrans.getBooleanValue()) {
+            props.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, m_transID.getStringValue());
+        }
         return props;
     }
 
