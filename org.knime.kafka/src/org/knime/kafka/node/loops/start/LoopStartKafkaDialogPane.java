@@ -48,6 +48,7 @@
  */
 package org.knime.kafka.node.loops.start;
 
+import java.awt.Component;
 import java.util.List;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
@@ -78,10 +79,16 @@ final class LoopStartKafkaDialogPane extends AbstractConsumerNodeDialog<Settings
      * {@inheritDoc}
      */
     @Override
-    protected List<DialogComponent> getSettingComponents() {
-        final List<DialogComponent> comps = super.getSettingComponents();
-        comps.add(5, new DialogComponentNumberEdit(LoopStartKafkaNodeModel.createBatchSizeModel(),
-            BATCH_SIZE_COMP_LABEL, DEFAULT_INPUT_COMP_WIDTH));
+    protected List<Component> getSettingComponents() {
+        final DialogComponent diaComp = new DialogComponentNumberEdit(LoopStartKafkaNodeModel.createBatchSizeModel(),
+            BATCH_SIZE_COMP_LABEL, DEFAULT_NUMBER_INPUT_COMP_WIDTH);
+
+        // register the component
+        registerDialogComponent(diaComp);
+
+        // append the additional dialog components and return the list
+        final List<Component> comps = super.getSettingComponents();
+        comps.add(3, diaComp.getComponentPanel());
         return comps;
     }
 

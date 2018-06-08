@@ -13,7 +13,7 @@
 			to create a connection with Kafka.
 		</intro>
 		<tab name="Settings">
-			<option name="Server list">
+			<option name="Kafka cluster">
 				A list of host/port pairs used for establishing the connection to the Kafka cluster. 
 				This list has to be in the form <tt>host1:port1,host2:port2,...</tt>. 
 			</option>

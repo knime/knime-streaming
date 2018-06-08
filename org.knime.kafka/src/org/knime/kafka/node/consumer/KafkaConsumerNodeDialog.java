@@ -48,6 +48,7 @@
  */
 package org.knime.kafka.node.consumer;
 
+import java.awt.Component;
 import java.util.List;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
@@ -75,11 +76,16 @@ final class KafkaConsumerNodeDialog extends AbstractConsumerNodeDialog<SettingsM
      * {@inheritDoc}
      */
     @Override
-    protected List<DialogComponent> getSettingComponents() {
-        final List<DialogComponent> comps = super.getSettingComponents();
-        // add this after the poll timeout
-        comps.add(5, new DialogComponentNumberEdit(getModel().getMaxReqRecordsModel(), MAX_NUM_RECORDS_PER_POLL,
-            DEFAULT_INPUT_COMP_WIDTH));
+    protected List<Component> getSettingComponents() {
+        final DialogComponent diaComp = new DialogComponentNumberEdit(getModel().getMaxReqRecordsModel(),
+            MAX_NUM_RECORDS_PER_POLL, DEFAULT_NUMBER_INPUT_COMP_WIDTH);
+
+        // register the component
+        registerDialogComponent(diaComp);
+
+        // append the additional dialog components and return the list
+        final List<Component> comps = super.getSettingComponents();
+        comps.add(3, diaComp.getComponentPanel());
         return comps;
     }
 

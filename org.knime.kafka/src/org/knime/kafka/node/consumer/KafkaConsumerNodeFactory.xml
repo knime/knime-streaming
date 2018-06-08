@@ -20,7 +20,7 @@
 			<option name="Group ID">
 				A unique string that identifies the consumer group this consumer belongs to. 
 			</option>
-			<option name="Topics">
+			<option name="Topic(s)">
 				<p>
 				A pattern or list of topics the consumer has to subscribe to.
 				</p>
@@ -42,6 +42,9 @@
 			<option name="Max number of messages per poll">
 				The maximum number of messages polled in a single request. 
 			</option>
+			<option name="Poll timeout (ms)">
+				The time, in milliseconds, spent waiting in poll request if data is not immediately available.
+			</option>
 			<option name="Stop Execution">
 				Determines how to stop the execution of this node.
 				<ul>
@@ -55,9 +58,6 @@
 						are no new messages available
 					</li>
 				</ul>
-			</option>
-			<option name="Poll timeout (ms)">
-				The time, in milliseconds, spent waiting in poll request if data is not immediately available.
 			</option>
 			<option name="Convert message to JSON">
 				If this option is selected the consumed messages are converted from String

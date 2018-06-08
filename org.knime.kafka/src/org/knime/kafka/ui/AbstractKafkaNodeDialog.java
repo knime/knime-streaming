@@ -48,6 +48,7 @@
  */
 package org.knime.kafka.ui;
 
+import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -80,10 +81,13 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
     private static final String TAB_SETTINGS = "Settings";
 
     /** The advanced tab name. */
-    private static final String TAB_ADVANCED_SETTINGS = "Advanced settings";
+    private static final String TAB_ADVANCED_SETTINGS = "Advanced Settings";
 
     /** The default length for string dialog components. */
-    protected static final int DEFAULT_INPUT_COMP_WIDTH = 20;
+    protected static final int DEFAULT_STRING_INPUT_COMP_WIDTH = 17;
+
+    /** The default length for number dialog components. */
+    protected static final int DEFAULT_NUMBER_INPUT_COMP_WIDTH = 9;
 
     /** The kafka dialog component shown in the advanced tab. */
     private DialogComponentKafka m_kafkaComp;
@@ -110,11 +114,11 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
     }
 
     /**
-     * Returns the settings model used for the settings tab.
+     * Returns the components used for the settings tab.
      *
      * @return the components to be shown in the settings tab
      */
-    abstract protected List<DialogComponent> getSettingComponents();
+    abstract protected List<Component> getSettingComponents();
 
     /**
      * Returns the Kafka settings model.
@@ -123,20 +127,6 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
      */
     protected T getModel() {
         return m_kafkaSettings;
-    }
-
-    /**
-     * Adds a component to the given panel and registers it.
-     *
-     * @param panel the panel to add to
-     * @param gbc the grid bag constraints
-     * @param toAdd the dialog component to add
-     */
-    private void addComponentToPanel(final JPanel panel, final GridBagConstraints gbc,
-        final DialogComponent toAdd) {
-        gbc.gridy++;
-        panel.add(toAdd.getComponentPanel(), gbc);
-        registerDialogComponent(toAdd);
     }
 
     /**
@@ -167,12 +157,12 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
         gbc.gridy = 0;
 
         // get the settings and add them to the panel
-        for (final DialogComponent comp : getSettingComponents()) {
-            addComponentToPanel(panel, gbc, comp);
+        for (final Component comp : getSettingComponents()) {
+            panel.add(comp, gbc);
+            ++gbc.gridy;
         }
         // create component to ensure that the components are shown at the top
         // left corner
-        ++gbc.gridy;
         gbc.weightx = 1;
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
@@ -201,9 +191,10 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
         gbc.weighty = 1;
         gbc.fill = GridBagConstraints.BOTH;
 
-        // create and add the kafka dialog component
+        // create, add, and register the kafka dialog component
         m_kafkaComp = new DialogComponentKafka(m_kafkaSettings.getKafkaSettingsModel());
-        addComponentToPanel(panel, gbc, m_kafkaComp);
+        panel.add(m_kafkaComp.getComponentPanel(), gbc);
+        registerDialogComponent(m_kafkaComp);
 
         // return the panel
         return panel;

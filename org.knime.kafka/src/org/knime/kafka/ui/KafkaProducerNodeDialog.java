@@ -48,12 +48,15 @@
  */
 package org.knime.kafka.ui;
 
+import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.JPanel;
@@ -89,7 +92,7 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
     private static final String TRANS_COMMIT_OPTIONS_TITLE = "Transaction Commit Options";
 
     /** The topics component label. */
-    private static final String TOPICS_COMP_LABEL = "Topics";
+    private static final String TOPICS_COMP_LABEL = "Topic(s)";
 
     /** The message column component label. */
     private static final String MESSAGE_COLUMN_COMP_LABEL = "Message column";
@@ -100,8 +103,8 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
     /** The transaction id component label. */
     private static final String TRANSACTION_ID = "Transaction ID";
 
-    /** The transaction commit interval component label. */
-    private static final String TRANSACTION_COMMIT_INTERVAL = "Batch size";
+    /** The topics tooltip text. */
+    private static final String TOPICS_TOOLTIP = "<html>A comma-separated list of <tt>topics</tt></html>";
 
     /** The use transaction dialog component. */
     private DialogComponentBoolean m_useTrans;
@@ -147,7 +150,7 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
         ++gbc.gridy;
 
         m_transID = new DialogComponentString(getModel().getTransactionIdSettingsModel(), TRANSACTION_ID, true,
-            DEFAULT_INPUT_COMP_WIDTH);
+            DEFAULT_STRING_INPUT_COMP_WIDTH);
         panel.add(m_transID.getComponentPanel(), gbc);
         ++gbc.gridy;
 
@@ -174,25 +177,57 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
 
         final GridBagConstraints gbc = new GridBagConstraints();
         gbc.anchor = GridBagConstraints.LINE_START;
-        gbc.weightx = 0;
+        gbc.weightx = 1;
         gbc.weighty = 0;
-        gbc.gridwidth = 1;
-        gbc.insets = new Insets(0, 5, 0, 0);
         gbc.fill = GridBagConstraints.NONE;
         gbc.gridy = 0;
+        gbc.gridx = 0;
+        gbc.insets = new Insets(0, 5, 0, 0);
+
         m_transCommitOption =
-            new DialogComponentButtonGroup(getModel().getTransactionCommitOptionSettingsModel(), false, null, //
+            new DialogComponentButtonGroup(getModel().getTransactionCommitOptionSettingsModel(), true, null, //
                 Arrays.stream(TransactionCommitOption.values())//
                     .map(opt -> opt.toString())//
                     .toArray(String[]::new)//
             );
-        panel.add(m_transCommitOption.getComponentPanel(), gbc);
+
+        // add the commit option
+        panel.add(m_transCommitOption.getButton(TransactionCommitOption.TABLE_END.toString()), gbc);
+
         ++gbc.gridy;
+        panel.add(createBatchPanel(m_transCommitOption.getButton(TransactionCommitOption.INTERVAL.toString())), gbc);
 
+        // return the panel
+        return panel;
+    }
+
+    /**
+     * Create the batch size dialog component to the right of the batch-size radio button.
+     *
+     * @param button the batch size radio button
+     * @return the panel holding the button on the left and the number edit dialog component to the right
+     */
+    private Component createBatchPanel(final AbstractButton button) {
+        final JPanel panel = new JPanel(new GridBagLayout());
+
+        final GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.LINE_START;
+        gbc.weightx = 1;
+        gbc.weighty = 0;
+        gbc.gridwidth = 1;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.gridy = 0;
+        gbc.gridx = 0;
+
+        // add the button to the left
+        panel.add(button, gbc);
+
+        // add the batch size to the right
+        ++gbc.gridx;
+        //        gbc.insets = new Insets(0, 0, 0, 0);
         m_transCommitInterval = new DialogComponentNumberEdit(getModel().getTransactionCommitIntervalSettingsModel(),
-            TRANSACTION_COMMIT_INTERVAL);
+            null, DEFAULT_NUMBER_INPUT_COMP_WIDTH);
         panel.add(m_transCommitInterval.getComponentPanel(), gbc);
-
         return panel;
     }
 
@@ -201,17 +236,26 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
      */
     @SuppressWarnings("unchecked")
     @Override
-    protected List<DialogComponent> getSettingComponents() {
+    protected List<Component> getSettingComponents() {
+        // set the tooltip
+        final DialogComponentString topics = new DialogComponentString(getModel().getTopicSettingsModel(),
+            TOPICS_COMP_LABEL, true, DEFAULT_STRING_INPUT_COMP_WIDTH);
+        topics.setToolTipText(TOPICS_TOOLTIP);
 
-        // append the additional dialog components
-        final List<DialogComponent> comps = super.getSettingComponents();
-        comps.addAll(Arrays.asList(new DialogComponent[]{ //
-            new DialogComponentString(getModel().getTopicSettingsModel(), TOPICS_COMP_LABEL, true,
-                DEFAULT_INPUT_COMP_WIDTH)//
+        final DialogComponent[] diaComps = new DialogComponent[]{ //
+            topics//
             , new DialogComponentColumnNameSelection(getModel().getMessageColumnSettingsModel(),
                 MESSAGE_COLUMN_COMP_LABEL, 0, true, StringValue.class)//
-        }));
-        return comps;
+        };
+
+        // register the components
+        registerDialogComponent(diaComps);
+
+        // append the additional dialog components and return the list
+        final List<Component> comps = super.getSettingComponents();
+        return Arrays.stream(diaComps)//
+            .map(DialogComponent::getComponentPanel)//
+            .collect(Collectors.toCollection(() -> comps));
     }
 
     /**

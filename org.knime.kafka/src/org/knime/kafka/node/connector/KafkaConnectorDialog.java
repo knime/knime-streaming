@@ -48,8 +48,11 @@
  */
 package org.knime.kafka.node.connector;
 
+import java.awt.Component;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
 import org.knime.core.node.defaultnodesettings.DialogComponentNumberEdit;
@@ -65,13 +68,14 @@ import org.knime.kafka.ui.AbstractKafkaNodeDialog;
  */
 final class KafkaConnectorDialog extends AbstractKafkaNodeDialog<SettingsModelKafkaConnection> {
 
-    /**
-     *
-     */
+    /** The connection validation timeout label. */
     private static final String CONNECTION_VALIDATION_TIMEOUT = "Connection validation timeout (ms)";
 
-    /** The server component label. */
-    private static final String SERVER_COMP_LABEL = "Server list";
+    /** The cluster component label. */
+    private static final String CLUSTER_COMP_LABEL = "Kafka cluster";
+
+    /** The Kafka cluster tooltip text. */
+    private static final String CLUSTER_TOOLTIP = "<html>A comma-separated list of <tt>host:port</tt> pairs</html>";
 
     /**
      * Constructor.
@@ -84,11 +88,23 @@ final class KafkaConnectorDialog extends AbstractKafkaNodeDialog<SettingsModelKa
      * {@inheritDoc}
      */
     @Override
-    protected List<DialogComponent> getSettingComponents() {
-        return Arrays.asList(new DialogComponent[]{ //
-            new DialogComponentString(getModel().getServerSettingsModel(), SERVER_COMP_LABEL, true,
-                DEFAULT_INPUT_COMP_WIDTH) //
-            , new DialogComponentNumberEdit(KafkaConnectorNodeModel.createConnectionValidationTimeoutModel(),
-                CONNECTION_VALIDATION_TIMEOUT)});
+    protected List<Component> getSettingComponents() {
+        final DialogComponentString server = new DialogComponentString(getModel().getServerSettingsModel(),
+            CLUSTER_COMP_LABEL, true, DEFAULT_STRING_INPUT_COMP_WIDTH);
+        server.setToolTipText(CLUSTER_TOOLTIP);
+        final DialogComponent[] diaComps = new DialogComponent[]{ //
+            server, //
+            new DialogComponentNumberEdit(KafkaConnectorNodeModel.createConnectionValidationTimeoutModel(),
+                CONNECTION_VALIDATION_TIMEOUT, DEFAULT_NUMBER_INPUT_COMP_WIDTH)//
+        };
+
+        // register the components
+        registerDialogComponent(diaComps);
+
+        // return the list
+        return new ArrayList<Component>(Arrays.stream(diaComps)//
+            .map(DialogComponent::getComponentPanel)//
+            .collect(Collectors.toList())//
+        );
     }
 }

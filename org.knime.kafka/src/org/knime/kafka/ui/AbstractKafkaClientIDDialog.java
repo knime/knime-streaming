@@ -48,9 +48,11 @@
  */
 package org.knime.kafka.ui;
 
+import java.awt.Component;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
 import org.knime.core.node.defaultnodesettings.DialogComponentString;
@@ -64,8 +66,7 @@ import org.knime.kafka.settings.AbstractSettingsModelKafka;
  *
  * @param <T> and instance of {@link AbstractClientIDSettingsModelKafka}
  */
-class AbstractKafkaClientIDDialog<T extends AbstractClientIDSettingsModelKafka>
-    extends AbstractKafkaNodeDialog<T> {
+class AbstractKafkaClientIDDialog<T extends AbstractClientIDSettingsModelKafka> extends AbstractKafkaNodeDialog<T> {
 
     /** The client id component label. */
     private static final String CLIENT_ID_COMP_LABEL = "Client ID";
@@ -83,11 +84,20 @@ class AbstractKafkaClientIDDialog<T extends AbstractClientIDSettingsModelKafka>
      * {@inheritDoc}
      */
     @Override
-    protected List<DialogComponent> getSettingComponents() {
-        return new ArrayList<DialogComponent>(Arrays.asList(new DialogComponent[]{ //
+    protected List<Component> getSettingComponents() {
+        final DialogComponent[] diaComps = new DialogComponent[]{ //
             new DialogComponentString(getModel().getClientIDSettingsModel(), CLIENT_ID_COMP_LABEL, false,
-                DEFAULT_INPUT_COMP_WIDTH) //
-        }));
+                DEFAULT_STRING_INPUT_COMP_WIDTH) //
+        };
+
+        // register the components
+        registerDialogComponent(diaComps);
+
+        // return the list
+        return new ArrayList<Component>(Arrays.stream(diaComps)//
+            .map(DialogComponent::getComponentPanel)//
+            .collect(Collectors.toList())//
+        );
     }
 
 }

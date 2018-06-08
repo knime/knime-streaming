@@ -16,7 +16,7 @@
 				be able to track the source of requests beyond just ip/port by allowing a logical
 				application name to be included in server-side request logging.
 			</option>
-			<option name="Topics">
+			<option name="Topic(s)">
 				A list of topics the producer sends the messages to. The topics list has to be in the
 				form <tt>topic1,topic2,...</tt>.
 			</option>
@@ -41,14 +41,11 @@
 						</li>
 						<li>
 							<b>Batchwise</b> This option sends a fixed number of messages
-							per transaction
+							per transaction. Larger values result in less transactions but
+							might stall message consumption.
 						</li>
 					</ul>
 			</option>
-			<option name="Batch size">
-				Defines the size of each transaction batch. Larger values result in less
-				transactions but might stall message consumption.
-			</option>	
 		</tab>
 		<tab name="Advanced Settings">
 			<option name="Advanced Settings">

@@ -48,8 +48,16 @@
  */
 package org.knime.kafka.ui;
 
+import java.awt.Component;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.JPanel;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
 import org.knime.core.node.defaultnodesettings.DialogComponentBoolean;
@@ -69,15 +77,6 @@ import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer.ConsumptionBreak
 public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsumer>
     extends AbstractKafkaClientIDDialog<T> {
 
-    /**
-     * Constructor.
-     *
-     * @param kafkaSettings an instance of {@link BasicSettingsModelKafkaConsumer}
-     */
-    protected AbstractConsumerNodeDialog(final T kafkaSettings) {
-        super(kafkaSettings);
-    }
-
     /** The group id component label. */
     private static final String GROUP_ID_COMP_LABEL = "Group ID";
 
@@ -85,7 +84,7 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
     private static final String POLL_TIMEOUT_COMP_LABEL = "Poll timeout (ms)";
 
     /** The topics component label. */
-    private static final String TOPICS_COMP_LABEL = "Topics:";
+    private static final String TOPICS_COMP_LABEL = "Topic(s)";
 
     /** The topic is pattern component label. */
     private static final String TOPIC_IS_PATTERN_COMP_LABEL = "Topic is pattern";
@@ -99,30 +98,105 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
     /** The stop execution border title. */
     private static final String EXECUTION_BORDER_TITLE = "Stop Execution";
 
+    /** The topics tooltip text. */
+    private static final String TOPICS_TOOLTIP =
+        "<html>Either a comma-separated list of <tt>topics</tt> or a <tt>regular expression</tt></html>";
+
+    /** The topic options border title. */
+    private static final String TOPIC_OPTIONS_BORDER_TITLE = "Topic Options";
+
+    /**
+     * Constructor.
+     *
+     * @param kafkaSettings an instance of {@link BasicSettingsModelKafkaConsumer}
+     */
+    protected AbstractConsumerNodeDialog(final T kafkaSettings) {
+        super(kafkaSettings);
+    }
+
     /**
      * {@inheritDoc}
      */
     @Override
-    protected List<DialogComponent> getSettingComponents() {
-        final List<DialogComponent> comps = super.getSettingComponents();
-        comps.addAll(Arrays.asList(new DialogComponent[]{ //
+    protected List<Component> getSettingComponents() {
+        final JPanel panel = createTopicsPanel();
+
+        final DialogComponent[] diaComps = new DialogComponent[]{ //
             new DialogComponentString(getModel().getGroupIDSettingsModel(), GROUP_ID_COMP_LABEL, false,
-                DEFAULT_INPUT_COMP_WIDTH)//
-            , new DialogComponentString(getModel().getTopicsSettingsModel(), TOPICS_COMP_LABEL, true,
-                DEFAULT_INPUT_COMP_WIDTH) //
-            , new DialogComponentBoolean(getModel().getTopicPatternSettingsModel(), TOPIC_IS_PATTERN_COMP_LABEL)//
-            , new DialogComponentBoolean(getModel().getAppendTopicColumnSettingsModel(), APPEND_TOPIC_COLUMN_COMP_LABEL)//
+                DEFAULT_STRING_INPUT_COMP_WIDTH)//
+            , new DialogComponentNumberEdit(getModel().getPollTimeoutSettingsModel(), POLL_TIMEOUT_COMP_LABEL,
+                DEFAULT_NUMBER_INPUT_COMP_WIDTH)//
             ,
-            new DialogComponentButtonGroup(getModel().getConsumptionBreakConditionSettingsModel(), false,
+            new DialogComponentButtonGroup(getModel().getConsumptionBreakConditionSettingsModel(), true,
                 EXECUTION_BORDER_TITLE, Arrays//
                     .stream(ConsumptionBreakCondition.values())//
                     .map(opt -> opt.toString())//
-                    .toArray(String[]::new)//
-            )//
-            , new DialogComponentNumberEdit(getModel().getPollTimeoutSettingsModel(), POLL_TIMEOUT_COMP_LABEL)//
+                    .toArray(String[]::new))//
             , new DialogComponentBoolean(getModel().getConvertToJSONSettingsModel(), CONVERT_TO_JSON_COMP_LABEL)//
-        }));
-        return comps;
+        };
+
+        // register the components
+        registerDialogComponent(diaComps);
+
+        // append the additional dialog components
+        final List<Component> comps = super.getSettingComponents();
+        final List<Component> extComps = Arrays.stream(diaComps)//
+            .map(DialogComponent::getComponentPanel)//
+            .collect(Collectors.toCollection(() -> comps));
+
+        // add the panel after the group id and return the list
+        extComps.add(2, panel);
+        return extComps;
+    }
+
+    /**
+     * Creates the topics panel.
+     *
+     * @return the topics panel
+     */
+    private JPanel createTopicsPanel() {
+        // create the dialog components
+        final DialogComponentString topics = new DialogComponentString(getModel().getTopicsSettingsModel(),
+            TOPICS_COMP_LABEL, true, DEFAULT_STRING_INPUT_COMP_WIDTH);
+        topics.setToolTipText(TOPICS_TOOLTIP);
+
+        final DialogComponent[] diaComps = new DialogComponent[]{
+            new DialogComponentBoolean(getModel().getTopicPatternSettingsModel(), TOPIC_IS_PATTERN_COMP_LABEL)//
+            , new DialogComponentBoolean(getModel().getAppendTopicColumnSettingsModel(), APPEND_TOPIC_COLUMN_COMP_LABEL)//
+        };
+
+        // register them
+        registerDialogComponent(diaComps);
+
+        // create the panel
+        final JPanel panel = new JPanel(new GridBagLayout());
+
+        // add border
+        panel.setBorder(
+            BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), TOPIC_OPTIONS_BORDER_TITLE));
+
+        // init gbc
+        final GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.LINE_START;
+        gbc.weightx = 0;
+        gbc.weighty = 0;
+        gbc.gridwidth = 1;
+        gbc.insets = new Insets(0, 5, 0, 0);
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.gridy = 0;
+        gbc.gridx = 0;
+
+        // fill the panel
+        gbc.gridwidth = 2;
+        panel.add(topics.getComponentPanel(), gbc);
+        ++gbc.gridy;
+
+        gbc.gridwidth = 1;
+        for (final DialogComponent comp : diaComps) {
+            panel.add(comp.getComponentPanel(), gbc);
+            ++gbc.gridx;
+        }
+        return panel;
     }
 
 }
