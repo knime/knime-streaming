@@ -4,34 +4,34 @@
 	type="LoopStart" icon="loop_start_kafka.png">
 	<name>Kafka Consumer Loop Start</name>
 	<shortDescription>
-		Allows to iteratively poll batches of messages from Kafka and to process them.
+		Allows to iteratively poll batches of messages from a Kafka cluster and to process them.
 	</shortDescription>
 	<fullDescription>
 		<intro>
-		In each iteration another batch of messages is consumed from Kafka and processed.
+		This node iteratively consumes messages from a Kafka cluster in batches. These batches are then sent 
+		to the output table for further processing.
 		</intro>
 		<tab name="Settings">
 			<option name="Client ID">
-				An id string to pass to the server when making requests. The purpose of this is to
-				be able to track the source of requests beyond just ip/port by allowing a logical
-				application name to be included in server-side request logging.
+				An id string to pass to the Kafka cluster when making requests.
+				This string can be included as a logical application name in server-side request logging,
+				thus making it easier to track the source of requests beyond ip/port.
 			</option>
 			<option name="Group ID">
 				A unique string that identifies the consumer group this consumer belongs to. 
 			</option>
 			<option name="Topic(s)">
 				<p>
-				A pattern or list of topics the consumer has to subscribe to.
+				A pattern or list of topics the consumer subscribes to.
 				</p>
 				<p>
 				A pattern has to be a regular expression as defined 
 				<a href="https://docs.oracle.com/javase/7/docs/api/java/util/regex/Pattern.html">here</a>.
-				The topics list has to be in the form <tt>topic1,topic2,...</tt>.
+				The topics list has to be entered in the form <tt>topic1,topic2,...</tt>.
 				</p>
 			</option>
 			<option name="Topic is pattern">
-				If this option is selected, the value of topics will be treated as a pattern, and
-				as a list otherwise.
+				If this option is selected, the value of topics will be treated as a pattern instead of a list.
 			</option>
 			<option name="Append topic column">
 				If this option is selected, an additional column is added to the output table
@@ -39,7 +39,8 @@
 				from.
 			</option>
 			<option name="Batch size">
-				The size of each batch, i.e., number of rows in the output table.
+				The number of messages consumed in each iteration. This matches the number of rows
+				in the output table.
 			</option>
 			<option name="Poll timeout (ms)">
 				The time, in milliseconds, spent waiting in poll request if data is not immediately available.
@@ -53,12 +54,12 @@
 					</li>
 					<li>
 						<b>Once message queue is empty</b> Stops the execution once there
-						are no new messages available
+						are no new messages available.
 					</li>
 				</ul>
 			</option>
 			<option name="Convert message to JSON">
-				If this option is selected the consumed messages are converted from String
+				If this option is selected, the consumed messages are converted from String
 				to JSON.
 			</option>
 		</tab>

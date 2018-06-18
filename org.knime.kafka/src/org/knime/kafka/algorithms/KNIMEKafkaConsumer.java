@@ -50,12 +50,15 @@ package org.knime.kafka.algorithms;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -135,6 +138,12 @@ public final class KNIMEKafkaConsumer {
     /** The KafkaConsumer . */
     private KafkaConsumer<Long, String> m_consumer;
 
+    /** Map storing the last offset of the assigned partitions. */
+    private Map<TopicPartition, Long> m_endOffsets;
+
+    /** Map storing the offset of the next message that will be fetched. */
+    private Map<TopicPartition, Long> m_curOffsetMap;
+
     /**
      * Constructor.
      *
@@ -157,6 +166,8 @@ public final class KNIMEKafkaConsumer {
         m_lookAhead = builder.m_lookAhead;
         m_starved = false;
         m_consumer = null;
+        m_endOffsets = null;
+        m_curOffsetMap = null;
     }
 
     /**
@@ -417,23 +428,57 @@ public final class KNIMEKafkaConsumer {
         }
         // only look ahead if consumer hasn't starved yet and is not executed in infinite mode
         if (!m_infinitePolling && !m_starved && m_lookAhead) {
-            m_starved = lookAhead(offsetMap);
+            m_starved = willStarve(offsetMap);
         }
         // close the output
         output.close();
     }
 
     /**
-     * @param offsetMap
-     * @return
+     * Checks if the next execution of poll will contain any messages.
+     *
+     * @param offsetMap the recently committed offsets
+     * @return {@code true} if the next execution of poll contains messages
      */
-    private boolean lookAhead(final Map<TopicPartition, OffsetAndMetadata> offsetMap) {
-        for (Entry<TopicPartition, Long> entry : m_consumer.endOffsets(offsetMap.keySet()).entrySet()) {
-            if (entry.getValue() != offsetMap.get(entry.getKey()).offset()) {
-                return false;
+    private boolean willStarve(final Map<TopicPartition, OffsetAndMetadata> offsetMap) {
+        // update the current offsets
+        offsetMap.entrySet().stream()//
+            .forEach(e -> m_curOffsetMap.put(e.getKey(), e.getValue().offset()));
+
+        // if there are no unprocessed messages check if a producer has written to the assigned
+        // partitions after they were assigned to the consumer
+        if (!hasUnprocessedMsgs()) {
+            // update the end offsets and check again
+            m_endOffsets = getEndOffsets(m_consumer.assignment());
+            return !hasUnprocessedMsgs();
+        }
+        return false;
+    }
+
+    /**
+     * Checks if any of the assigned partition contains unprocessed messages.
+     *
+     * @return {@code true} if there are unprocessed messages
+     */
+    private boolean hasUnprocessedMsgs() {
+        for (Entry<TopicPartition, Long> entry : m_endOffsets.entrySet()) {
+            if (m_curOffsetMap.get(entry.getKey()) < entry.getValue()) {
+                return true;
             }
         }
-        return true;
+        return false;
+    }
+
+    /**
+     * @param assignment
+     * @return
+     */
+    private Map<TopicPartition, Long> getCurOffsets(final Collection<TopicPartition> assignment) {
+        return assignment.stream().collect(Collectors.toMap(p -> p, p -> m_consumer.position(p)));
+    }
+
+    private Map<TopicPartition, Long> getEndOffsets(final Collection<TopicPartition> assignment) {
+        return m_consumer.endOffsets(assignment);
     }
 
     /**
@@ -475,10 +520,27 @@ public final class KNIMEKafkaConsumer {
 
         // initialize the consumer
         m_consumer = new KafkaConsumer<>(m_properties);
+
+        // rebalance listener initializing the offset maps
+        final ConsumerRebalanceListener rebalanceListener = new ConsumerRebalanceListener() {
+
+            @Override
+            public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
+            }
+
+            @Override
+            public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
+                if (!m_infinitePolling && m_lookAhead) {
+                    m_endOffsets = getEndOffsets(partitions);
+                    m_curOffsetMap = getCurOffsets(partitions);
+                }
+            }
+        };
+
         if (m_isPattern) {
-            m_consumer.subscribe(Pattern.compile(m_topics));
+            m_consumer.subscribe(Pattern.compile(m_topics), rebalanceListener);
         } else {
-            m_consumer.subscribe(Arrays.asList(m_topics.trim().split("\\s*,\\s*", -1)));
+            m_consumer.subscribe(Arrays.asList(m_topics.trim().split("\\s*,\\s*", -1)), rebalanceListener);
         }
         return m_consumer;
     }

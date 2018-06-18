@@ -166,6 +166,7 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
         };
 
         // register them
+        registerDialogComponent(topics);
         registerDialogComponent(diaComps);
 
         // create the panel

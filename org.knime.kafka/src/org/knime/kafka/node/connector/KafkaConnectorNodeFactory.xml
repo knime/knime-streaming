@@ -4,23 +4,22 @@
 	type="Source" icon="kafka_connector.png">
 	<name>Kafka Connector</name>
 	<shortDescription>
-		Provides connection settings to a Kafka Cluster.
+		Provides connection settings to a Kafka cluster.
 	</shortDescription>
 
 	<fullDescription>
 		<intro>
-			This node allows to define any information that is needed
-			to create a connection with Kafka.
+			This node allows to define the information that is needed
+			to establish a connection with a Kafka cluster.
 		</intro>
 		<tab name="Settings">
 			<option name="Kafka cluster">
 				A list of host/port pairs used for establishing the connection to the Kafka cluster. 
-				This list has to be in the form <tt>host1:port1,host2:port2,...</tt>. 
+				This list has to be entered in the form <tt>host1:port1,host2:port2,...</tt>. 
 			</option>
 			<option name="Connection validation timeout (ms)">
-				The validation timeout defines the amount of time this node waits for a response
-				from the server. If no response was received within the given time window the 
-				connection is invalid. 
+				The amount of time this node waits for a response from the Kafka cluster. If no response
+				was received within the given time window, the connection is invalid. 
 			</option>
 		</tab>
 		<tab name="Advanced Settings">

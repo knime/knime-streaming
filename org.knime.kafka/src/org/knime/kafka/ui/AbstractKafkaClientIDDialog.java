@@ -94,10 +94,9 @@ class AbstractKafkaClientIDDialog<T extends AbstractClientIDSettingsModelKafka> 
         registerDialogComponent(diaComps);
 
         // return the list
-        return new ArrayList<Component>(Arrays.stream(diaComps)//
+        return Arrays.stream(diaComps)//
             .map(DialogComponent::getComponentPanel)//
-            .collect(Collectors.toList())//
-        );
+            .collect(Collectors.toCollection(ArrayList<Component>::new));
     }
 
 }

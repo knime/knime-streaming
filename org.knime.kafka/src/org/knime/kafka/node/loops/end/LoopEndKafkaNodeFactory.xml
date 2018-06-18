@@ -4,26 +4,25 @@
 	type="LoopEnd" icon="loop_end_kafka.png">
 	<name>Kafka Producer Loop End</name>
 	<shortDescription>
-		Node at the end of a loop that sends messages to Kafka.
+		Node at the end of a loop that sends messages to a Kafka cluster.
 	</shortDescription>
 	<fullDescription>
 		<intro>
 			Node at the end of a loop. It is used to mark the end of a workflow loop and sends the
-			intermediate results to Kafka. 
+			intermediate results to a Kafka cluster. 
 		</intro>
 		<tab name="Settings">
 			<option name="Client ID">
-				An id string to pass to the server when making requests. The purpose of this is to
-				be able to track the source of requests beyond just ip/port by allowing a logical
-				application name to be included in server-side request logging.
+				An id string to pass to the Kafka cluster when making requests.
+				This string can be included as a logical application name in server-side request logging,
+				thus making it easier to track the source of requests beyond ip/port.
 			</option>
 			<option name="Topic(s)">
-				A list of topics the producer sends the messages to. The topics list has to be in the
-				form <tt>topic1,topic2,...</tt>.
+				A list of topics the producer sends the messages to. The topics list has to be entered in
+				the	form <tt>topic1,topic2,...</tt>.
 			</option>
 			<option name="Message column">
-				Specifies the column containing the messages that have to be send to Kafka. This
-				column can be either of type String or JSON. 
+				A String or JSON column containing the messages that have to be send to the Kafka cluster.
 			</option>
 		</tab>
 		<tab name="Transaction Settings">
@@ -58,7 +57,8 @@
 		</tab>
 	</fullDescription>
 	<ports>
-		<inPort index="0" name="Data table">(Intermediate) data table holding the column to be send to Kafka
+		<inPort index="0" name="Data table">(Intermediate) data table holding the column to be send to 
+		the Kafka cluster
 		</inPort>
 		<inPort index="1" name="Kafka connection">Connection details used to create the Kafka Producer
 		</inPort>
