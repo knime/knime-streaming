@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <feature
       id="org.knime.features.kafka"
-      label="KNIME Kafka (Preview)"
+      label="KNIME Extension for Apache Kafka (Preview)"
       version="3.6.0.qualifier"
       provider-name="KNIME AG, Zurich, Switzerland">
 
    <description url="http://www.knime.com">
-      KNIME Kafka allows the KNIME Analytics Platform to consume records
-from Kafka as well as sending new records to Kafka. Note that
-KNIME Kafka is in its early stages of development, and we
+      This extension allows the KNIME Analytics Platform to consume records
+from Apache Kafka as well as sending new records to Kafka. Note that
+this extension is in its early stages of development, and we
 therefore recommend against its use in production
    </description>
 
