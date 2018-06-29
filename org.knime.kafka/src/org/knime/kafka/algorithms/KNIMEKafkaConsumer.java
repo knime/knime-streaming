@@ -229,9 +229,25 @@ public final class KNIMEKafkaConsumer {
          * @param consumerProps the consumer properties
          * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
          * @param isPattern <code>True</code> if topics is a pattern
-         * @param infinitePolling <code>True</code> if the consumer shall poll messages infinitely
          * @param conValTimeout the connection validation timeout
          */
+        public Builder(final Properties connectionProps, final Properties consumerProps, final String topics,
+            final boolean isPattern, final int conValTimeout) {
+            this(connectionProps, connectionProps, topics, isPattern, false, conValTimeout);
+        }
+
+        /**
+         * Constructor.
+         *
+         * @param connectionProps the connection properties
+         * @param consumerProps the consumer properties
+         * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
+         * @param isPattern <code>True</code> if topics is a pattern
+         * @param infinitePolling <code>True</code> if the consumer shall poll messages infinitely
+         * @param conValTimeout the connection validation timeout
+         * @deprecated KNIME does not support endless-streaming
+         */
+        @Deprecated
         public Builder(final Properties connectionProps, final Properties consumerProps, final String topics,
             final boolean isPattern, final boolean infinitePolling, final int conValTimeout) {
             m_connectionProps = new Properties();
@@ -274,7 +290,9 @@ public final class KNIMEKafkaConsumer {
          *
          * @param lookAhead <code>True</code> if the consumer shall look ahead at the end of every execution
          * @return the builder itself
+         * @deprecated KNIME does not support endless-streaming
          */
+        @Deprecated
         public Builder lookAhead(final boolean lookAhead) {
             m_lookAhead = lookAhead;
             return this;
@@ -427,7 +445,7 @@ public final class KNIMEKafkaConsumer {
             m_consumer.commitSync(offsetMap);
         }
         // only look ahead if consumer hasn't starved yet and is not executed in infinite mode
-        if (!m_infinitePolling && !m_starved && m_lookAhead) {
+        if (m_lookAhead && !m_infinitePolling && !m_starved) {
             m_starved = willStarve(offsetMap);
         }
         // close the output

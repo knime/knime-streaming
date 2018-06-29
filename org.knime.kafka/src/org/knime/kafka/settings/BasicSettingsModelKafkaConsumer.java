@@ -75,7 +75,9 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      * Enum specifying the execution break condition.
      *
      * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
+     * @deprecated KNIME does not support endless-streaming
      */
+    @Deprecated
     public enum ConsumptionBreakCondition {
 
             /** Indicates that the consumer shall never stop polling messages. */
@@ -160,8 +162,10 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      */
     protected BasicSettingsModelKafkaConsumer() {
         super(CONSUMER_PROPERTIES);
-        addModel(m_topicModel, m_groupID, m_topicPattern, m_convertToJSON, m_appendTopicColumn, m_pollTimeout,
-            m_breakCondition);
+        addModel(m_topicModel, m_groupID, m_topicPattern, m_convertToJSON, m_appendTopicColumn, m_pollTimeout
+        // TODO: add this line to enable-endless streaming
+        //            ,m_breakCondition
+        );
     }
 
     /**
@@ -231,7 +235,9 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      * Returns the settings model storing the consumption break condition.
      *
      * @return the consumption break condition settings model
+     * @deprecated KNIME does not support endless-streaming
      */
+    @Deprecated
     public final SettingsModelString getConsumptionBreakConditionSettingsModel() {
         return m_breakCondition;
     }
@@ -258,7 +264,9 @@ public abstract class BasicSettingsModelKafkaConsumer extends AbstractClientIDSe
      * Returns the number of max empty polls. A value of -1 represents unlimited polling/streaming.
      *
      * @return number of empty polls or -1 for unlimited
+     * @deprecated KNIME does not support endless-streaming
      */
+    @Deprecated
     public final boolean endlessStreaming() {
         return m_breakCondition.getStringValue().equals(ConsumptionBreakCondition.NEVER.toString());
     }

@@ -44,6 +44,7 @@
 			<option name="Poll timeout (ms)">
 				The time, in milliseconds, spent waiting in poll request if data is not immediately available.
 			</option>
+			<!-- endless streaming options
 			<option name="Stop Execution">
 				Determines how to stop the execution of this node.
 				<ul>
@@ -58,6 +59,7 @@
 					</li>
 				</ul>
 			</option>
+			-->
 			<option name="Convert message to JSON">
 				If this option is selected, the consumed messages are converted from String
 				to JSON.

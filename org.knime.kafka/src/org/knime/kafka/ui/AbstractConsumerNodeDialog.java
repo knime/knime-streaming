@@ -61,11 +61,9 @@ import javax.swing.JPanel;
 
 import org.knime.core.node.defaultnodesettings.DialogComponent;
 import org.knime.core.node.defaultnodesettings.DialogComponentBoolean;
-import org.knime.core.node.defaultnodesettings.DialogComponentButtonGroup;
 import org.knime.core.node.defaultnodesettings.DialogComponentNumberEdit;
 import org.knime.core.node.defaultnodesettings.DialogComponentString;
 import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer;
-import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer.ConsumptionBreakCondition;
 
 /**
  * The node dialog containing the Kafka client most of the components for the consumer nodes.
@@ -95,8 +93,8 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
     /** The convert to JSON component label. */
     private static final String CONVERT_TO_JSON_COMP_LABEL = "Convert message to JSON";
 
-    /** The stop execution border title. */
-    private static final String EXECUTION_BORDER_TITLE = "Stop Execution";
+    //    /** The stop execution border title. */
+    //    private static final String EXECUTION_BORDER_TITLE = "Stop Execution";
 
     /** The topics tooltip text. */
     private static final String TOPICS_TOOLTIP =
@@ -126,12 +124,13 @@ public class AbstractConsumerNodeDialog<T extends BasicSettingsModelKafkaConsume
                 DEFAULT_STRING_INPUT_COMP_WIDTH)//
             , new DialogComponentNumberEdit(getModel().getPollTimeoutSettingsModel(), POLL_TIMEOUT_COMP_LABEL,
                 DEFAULT_NUMBER_INPUT_COMP_WIDTH)//
-            ,
-            new DialogComponentButtonGroup(getModel().getConsumptionBreakConditionSettingsModel(), true,
-                EXECUTION_BORDER_TITLE, Arrays//
-                    .stream(ConsumptionBreakCondition.values())//
-                    .map(opt -> opt.toString())//
-                    .toArray(String[]::new))//
+            // TODO: add this line to enable-endless streaming
+            //            ,
+            //            new DialogComponentButtonGroup(getModel().getConsumptionBreakConditionSettingsModel(), true,
+            //                EXECUTION_BORDER_TITLE, Arrays//
+            //                    .stream(ConsumptionBreakCondition.values())//
+            //                    .map(opt -> opt.toString())//
+            //                    .toArray(String[]::new))//
             , new DialogComponentBoolean(getModel().getConvertToJSONSettingsModel(), CONVERT_TO_JSON_COMP_LABEL)//
         };
 

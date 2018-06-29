@@ -15,16 +15,6 @@
       <node
             category-path="/labs/kafka"
             deprecated="false"
-            factory-class="org.knime.kafka.node.loops.start.LoopStartKafkaNodeFactory">
-      </node>
-      <node
-            category-path="/labs/kafka"
-            deprecated="false"
-            factory-class="org.knime.kafka.node.loops.end.LoopEndKafkaNodeFactory">
-      </node>
-      <node
-            category-path="/labs/kafka"
-            deprecated="false"
             factory-class="org.knime.kafka.node.connector.KafkaConnectorNodeFactory">
       </node>
    </extension>
