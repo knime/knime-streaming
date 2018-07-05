@@ -125,6 +125,7 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
      */
     public KafkaProducerNodeDialog(final SettingsModelKafkaProducer kafkaSettings) {
         super(kafkaSettings);
+        initSettingsTab();
         addTabAt(1, TRANSACTION_TAB_NAME, createTransactionPanel());
         toggleTransaction();
         addListeners();

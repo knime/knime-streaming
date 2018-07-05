@@ -52,6 +52,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 
+import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.errors.InvalidConfigurationException;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.CanceledExecutionException;
@@ -64,10 +66,16 @@ import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.PortType;
+import org.knime.core.node.streamable.OutputPortRole;
+import org.knime.core.node.streamable.PartitionInfo;
+import org.knime.core.node.streamable.PortInput;
+import org.knime.core.node.streamable.PortOutput;
+import org.knime.core.node.streamable.RowOutput;
+import org.knime.core.node.streamable.StreamableOperator;
 import org.knime.kafka.algorithms.KNIMEKafkaConsumer;
+import org.knime.kafka.algorithms.KNIMEKafkaConsumer.BreakCondition;
 import org.knime.kafka.port.KafkaConnectorPortObject;
 import org.knime.kafka.port.KafkaConnectorPortSpec;
-import org.knime.kafka.settings.BasicSettingsModelKafkaConsumer;
 import org.knime.kafka.settings.SettingsModelKafkaConsumer;
 
 /**
@@ -81,15 +89,20 @@ final class KafkaConsumerNodeModel extends NodeModel {
     /** The empty topics exception text. */
     private static final String EMPTY_TOPICS_EXCEPTION = "The <Topics> cannot be empty";
 
-    /** The infinite consuming exception. */
-    private static final String INFINITE_LISTENING_EXCEPTION = "Infinite consuming only available in streaming mode.";
-
     /** The Kafka consumer settings model. */
-    private BasicSettingsModelKafkaConsumer m_consumerSettings;
+    private SettingsModelKafkaConsumer m_consumerSettings;
 
     /** Constructor. */
     public KafkaConsumerNodeModel() {
         super(new PortType[]{KafkaConnectorPortObject.TYPE}, new PortType[]{BufferedDataTable.TYPE});
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public OutputPortRole[] getOutputPortRoles() {
+        return new OutputPortRole[]{OutputPortRole.DISTRIBUTED};
     }
 
     /**
@@ -104,14 +117,8 @@ final class KafkaConsumerNodeModel extends NodeModel {
     /**
      * {@inheritDoc}
      */
-    @SuppressWarnings("deprecation")
     @Override
     protected PortObject[] execute(final PortObject[] inObjects, final ExecutionContext exec) throws Exception {
-        // test for non-streaming compatibility
-        if (m_consumerSettings.endlessStreaming()) {
-            throw new InvalidSettingsException(INFINITE_LISTENING_EXCEPTION);
-        }
-
         // init the consumer
         final KafkaConnectorPortObject port = ((KafkaConnectorPortObject)inObjects[0]);
         KNIMEKafkaConsumer consumer = null;
@@ -120,12 +127,44 @@ final class KafkaConsumerNodeModel extends NodeModel {
         try {
             // execute the consumer
             return new PortObject[]{consumer.execute(exec)};
+        } catch (final KafkaException e) {
+            throw new Exception(e.getCause());
         } catch (final Exception e) {
             throw (e);
         } finally {
             // ensure that the consumer is closed
             consumer.close();
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StreamableOperator createStreamableOperator(final PartitionInfo partitionInfo,
+        final PortObjectSpec[] inSpecs) throws InvalidSettingsException {
+        return new StreamableOperator() {
+            @Override
+            public void runFinal(final PortInput[] inputs, final PortOutput[] outputs, final ExecutionContext exec)
+                throws Exception {
+
+                // init the consumer
+                final KafkaConnectorPortSpec spec = (KafkaConnectorPortSpec)inSpecs[0];
+                final KNIMEKafkaConsumer consumer = getConsumer(spec.getConnectionProperties(),
+                    m_consumerSettings.getProperties(), spec.getConnectionValiditionTimeout());
+                try {
+                    // execute the consumer
+                    consumer.execute(exec, (RowOutput)outputs[0]);
+                } catch (final KafkaException e) {
+                    throw new Exception(e.getCause());
+                } catch (final Exception e) {
+                    throw (e);
+                } finally {
+                    // ensure that the consumer is closed
+                    consumer.close();
+                }
+            }
+        };
     }
 
     /**
@@ -136,17 +175,37 @@ final class KafkaConsumerNodeModel extends NodeModel {
      * @param conValTimeout the connection validation timeout
      * @return the properly intialized Kafka consumer
      */
-    @SuppressWarnings("deprecation")
     private KNIMEKafkaConsumer getConsumer(final Properties connectionProps, final Properties consumerProps,
-        final int conValTimeout) {
-        return new KNIMEKafkaConsumer.Builder(connectionProps, consumerProps, m_consumerSettings.getTopic(),
-            m_consumerSettings.useTopicPattern(), m_consumerSettings.endlessStreaming(), conValTimeout)//
-                .appendTopic(m_consumerSettings.appendTopic())//
+        final int conValTimeout) throws InvalidConfigurationException {
+        try {
+            final BreakCondition breakCond = m_consumerSettings.getBreakCondition();
+
+            final KNIMEKafkaConsumer.Builder builder;
+            switch (breakCond) {
+                case TIME:
+                    builder =
+                        KNIMEKafkaConsumer.getDateBuilder(connectionProps, consumerProps, m_consumerSettings.getTopic(),
+                            m_consumerSettings.useTopicPattern(), conValTimeout, m_consumerSettings.getTime());
+                    break;
+                case MSG_COUNT:
+                default:
+                    builder = KNIMEKafkaConsumer.getMsgCountBuilder(connectionProps, consumerProps,
+                        m_consumerSettings.getTopic(), m_consumerSettings.useTopicPattern(), conValTimeout,
+                        m_consumerSettings.getTotNumMsgs());
+                    break;
+            }
+            return builder//
+                .appendRecordInfo(m_consumerSettings.appendTopic())//
                 .convertToJSON(m_consumerSettings.convertToJSON())//
-                .setBatchSize(-1)//
-                .setOffset(0)//
+                .setRowIdOffset(0)//
                 .setPollTimeout(m_consumerSettings.getPollTimeout())//
+                .setZoneId(m_consumerSettings.getZone())//
                 .build();
+        } catch (final InvalidSettingsException e) {
+            // cannot happen, since we check the correctness of the selected break condition
+            // during validateSettings()
+            throw new InvalidConfigurationException(e.getMessage());
+        }
     }
 
     /**
@@ -162,10 +221,8 @@ final class KafkaConsumerNodeModel extends NodeModel {
             throw new InvalidSettingsException(EMPTY_TOPICS_EXCEPTION);
         }
 
-        // TODO: add this line to enable-endless streaming
         // test if options are controlled via flow var
-        //        ConsumptionBreakCondition
-        //            .getEnum(m_consumerSettings.getConsumptionBreakConditionSettingsModel().getStringValue());
+        BreakCondition.getEnum(m_consumerSettings.getBreakConditionSettingsModel().getStringValue());
 
         return new DataTableSpec[]{KNIMEKafkaConsumer.createOutTableSpec(m_consumerSettings.convertToJSON(),
             m_consumerSettings.appendTopic())};
@@ -233,42 +290,4 @@ final class KafkaConsumerNodeModel extends NodeModel {
     static SettingsModelKafkaConsumer createConsumerSettingsModel() {
         return new SettingsModelKafkaConsumer();
     }
-
-    // TODO: add these methods to enable-endless streaming
-    //    /**
-    //     * {@inheritDoc}
-    //     */
-    //    @Override
-    //    public OutputPortRole[] getOutputPortRoles() {
-    //        return new OutputPortRole[]{OutputPortRole.DISTRIBUTED};
-    //    }
-
-    //    /**
-    //     * {@inheritDoc}
-    //     */
-    //    @Override
-    //    public StreamableOperator createStreamableOperator(final PartitionInfo partitionInfo,
-    //        final PortObjectSpec[] inSpecs) throws InvalidSettingsException {
-    //        return new StreamableOperator() {
-    //            @Override
-    //            public void runFinal(final PortInput[] inputs, final PortOutput[] outputs,
-    //              final ExecutionContext exec)
-    //                throws Exception {
-    //
-    //                // init the consumer
-    //                final KafkaConnectorPortSpec spec = (KafkaConnectorPortSpec)inSpecs[0];
-    //                final KNIMEKafkaConsumer consumer = getConsumer(spec.getConnectionProperties(),
-    //                    m_consumerSettings.getProperties(), spec.getConnectionValiditionTimeout());
-    //                try {
-    //                    // execute the consumer
-    //                    consumer.execute(exec, (RowOutput)outputs[0]);
-    //                } catch (final Exception e) {
-    //                    throw (e);
-    //                } finally {
-    //                    // ensure that the consumer is closed
-    //                    consumer.close();
-    //                }
-    //            }
-    //        };
-    //    }
 }

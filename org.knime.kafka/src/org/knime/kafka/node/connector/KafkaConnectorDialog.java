@@ -82,6 +82,7 @@ final class KafkaConnectorDialog extends AbstractKafkaNodeDialog<SettingsModelKa
      */
     public KafkaConnectorDialog() {
         super(KafkaConnectorNodeModel.createConnectionSettingsModel());
+        initSettingsTab();
     }
 
     /**

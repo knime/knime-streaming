@@ -52,6 +52,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 
+import org.apache.kafka.common.KafkaException;
 import org.knime.core.data.DataColumnSpec;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.StringValue;
@@ -230,6 +231,8 @@ final class KafkaProducerNodeModel extends NodeModel {
         try {
             // execute the producer
             producer.execute(exec, input);
+        } catch (final KafkaException e) {
+            throw new Exception(e.getCause());
         } catch (final Exception e) {
             throw (e);
         } finally {

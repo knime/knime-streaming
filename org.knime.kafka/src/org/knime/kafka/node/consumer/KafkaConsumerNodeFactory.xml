@@ -10,6 +10,9 @@
 		<intro>
 			This node allows to consume messages from a Kafka cluster for given topics and to
 			store them in a table.
+			<br/>
+			<i>Note:</i> Offsets are committed at the end of the nodes execution as well
+			as whenever the partitions become reassigned.
 		</intro>
 		<tab name="Settings">
 			<option name="Client ID">
@@ -33,36 +36,38 @@
 			<option name="Topic is pattern">
 				If this option is selected, the value of topics will be treated as a pattern instead of a list.
 			</option>
-			<option name="Append topic column">
-				If this option is selected, an additional column is added to the output table
-				containing information about the name of the topic the message/row originates
-				from.
+			<option name="Append message info columns">
+				If this option is selected,  additional columns are added to the output table
+				containing detailed information about the message/row. More precisely the
+				following columns are added: <tt>Topic, Partition, Offset, Message creation date</tt>.
+			</option>
+			<option name="Convert message to JSON">
+				If this option is selected, the consumed messages are converted from String
+				to JSON.
 			</option>
 			<option name="Max number of messages per poll">
 				The maximum number of messages polled in a single request. 
 			</option>
 			<option name="Poll timeout (ms)">
-				The time, in milliseconds, spent waiting in poll request if data is not immediately available.
+				The time, in milliseconds, spent waiting for messages in a poll request.
 			</option>
-			<!-- endless streaming options
-			<option name="Stop Execution">
+			<option name="Stop Criterion">
 				Determines how to stop the execution of this node.
 				<ul>
 					<li>
-						<b>Never</b> Ensures that this nodes never
-						stops polling messages. This option is particularly useful if this node
-						is executed in streaming mode. 
+						<b>Message count</b> This node will stop once no more messages are available, but
+						at the latest when the specified number of messages were consumed.
 					</li>
 					<li>
-						<b>Once message queue is empty</b> Stops the execution once there
-						are no new messages available.
+						<b>Message timestamp after</b> Consumes all messages created up until the selected 
+						date &amp; time. If the selected data &amp; time is in the future, the execution
+						stops once a poll request returns no messages.
+						<br/>
+						Selecting &lt;Use execution date &amp; time&gt; consumes all 
+						messages up until the time the node is executed. The &lt;Current time&gt; button 
+						sets the date &amp; time to the current local time.
 					</li>
 				</ul>
-			</option>
-			-->
-			<option name="Convert message to JSON">
-				If this option is selected, the consumed messages are converted from String
-				to JSON.
 			</option>
 		</tab>
 		<tab name="Advanced Settings">

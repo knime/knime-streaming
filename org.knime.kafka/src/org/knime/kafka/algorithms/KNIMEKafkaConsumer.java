@@ -49,14 +49,17 @@
 package org.knime.kafka.algorithms;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -65,6 +68,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.knime.core.data.DataCell;
+import org.knime.core.data.DataColumnSpec;
 import org.knime.core.data.DataColumnSpecCreator;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
@@ -72,14 +76,21 @@ import org.knime.core.data.DataTableSpecCreator;
 import org.knime.core.data.DataType;
 import org.knime.core.data.RowKey;
 import org.knime.core.data.def.DefaultRow;
+import org.knime.core.data.def.IntCell;
+import org.knime.core.data.def.IntCell.IntCellFactory;
+import org.knime.core.data.def.LongCell;
+import org.knime.core.data.def.LongCell.LongCellFactory;
 import org.knime.core.data.def.StringCell;
+import org.knime.core.data.def.StringCell.StringCellFactory;
 import org.knime.core.data.json.JSONCell;
 import org.knime.core.data.json.JSONCellFactory;
+import org.knime.core.data.time.zoneddatetime.ZonedDateTimeCellFactory;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.streamable.BufferedDataTableRowOutput;
 import org.knime.core.node.streamable.RowOutput;
+import org.knime.time.util.DateTimeType;
 
 /**
  * Class to consume messages from Kafka.
@@ -89,6 +100,66 @@ import org.knime.core.node.streamable.RowOutput;
  */
 
 public final class KNIMEKafkaConsumer {
+
+    /**
+     * Enum specifying the execution break condition.
+     *
+     * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
+     */
+    public enum BreakCondition {
+
+            /** Indicates that the consumer shall stop polling messages after a certain number of messages. */
+            MSG_COUNT("Message count"),
+
+            /** Indicates that the consumer should only poll messages before a certain time. */
+            TIME("<html>Message timestamp<br>after</html>");
+
+        /** Missing name exception. */
+        private static final String NAME_MUST_NOT_BE_NULL = "Name must not be null";
+
+        /** IllegalArgumentException prefix. */
+        private static final String ARGUMENT_EXCEPTION_PREFIX = "No BreakCondition constant with name: ";
+
+        private final String m_name;
+
+        /**
+         * Constructor
+         *
+         * @param name the enum name
+         */
+        private BreakCondition(final String name) {
+            m_name = name;
+        }
+
+        @Override
+        public String toString() {
+            return m_name;
+        }
+
+        /**
+         * Returns the enum for a given String
+         *
+         * @param name the enum name
+         * @return the enum
+         * @throws InvalidSettingsException if the given name is not associated with an {@link BreakCondition} value
+         */
+        public static BreakCondition getEnum(final String name) throws InvalidSettingsException {
+            if (name == null) {
+                throw new InvalidSettingsException(NAME_MUST_NOT_BE_NULL);
+            }
+            return Arrays.stream(values()).//
+                filter(t -> t.m_name.equals(name))//
+                .findFirst()//
+                .orElseThrow(() -> new InvalidSettingsException(ARGUMENT_EXCEPTION_PREFIX + name));
+        }
+    }
+
+    private static final DataColumnSpec[] RECORD_COL_SPECS = new DataColumnSpec[]{//
+        createColSpec("Topic", StringCell.TYPE)//
+        , createColSpec("Partition", IntCell.TYPE)//
+        , createColSpec("Offset", LongCell.TYPE)//
+        , createColSpec("Message creation date", DateTimeType.ZONED_DATE_TIME.getDataType())//
+    };
 
     /** The connection properties. */
     private final Properties m_connectionProps;
@@ -102,47 +173,35 @@ public final class KNIMEKafkaConsumer {
     /** <code>True</code> if the topics string represents a pattern. */
     private final boolean m_isPattern;
 
-    /** <code>True</code> if the consumer shall poll messages infinitely. */
-    private final boolean m_infinitePolling;
-
     /** The connection validation timeout. */
     private final int m_conValTimeout;
+
+    /** The time up until messages have to be consumed. */
+    private final Long m_time;
 
     /** <code>True</code> if the message has to be converted to a JSON cell. */
     private final boolean m_convertToJSON;
 
-    /**
-     * <code>True</code> if the a column has to be append to the table informing about the topic the message originated
-     * from.
-     */
-    private final boolean m_appendTopic;
+    /** <code>True</code> if columns have to be append to the table storing information about the record. */
+    private final boolean m_appendRecordInfo;
 
-    /**
-     * <code>True</code> indicates at the end of every execution it is checked for additional messages. Only required
-     * for loop execution.
-     */
-    private final boolean m_lookAhead;
+    /** The row id offset. */
+    private long m_rowIdOffset;
 
-    /** <code>True</code> if the consumer has not polled any message for max number of empty polls many times. */
-    private boolean m_starved;
-
-    /** The message offset. */
-    private long m_offset;
-
-    /** The batch size. A value less than or equal 0 indicates that we don't creates any batches. */
-    private long m_batchSize;
+    /** The total number of messages to be consumed. */
+    private long m_totNumMsgs;
 
     /** The poll timeout. */
     private long m_pollTimeout;
 
+    /** The consumption break condition. */
+    private final BreakCondition m_breakCond;
+
+    /** The zone id. */
+    private final ZoneId m_zoneId;
+
     /** The KafkaConsumer . */
     private KafkaConsumer<Long, String> m_consumer;
-
-    /** Map storing the last offset of the assigned partitions. */
-    private Map<TopicPartition, Long> m_endOffsets;
-
-    /** Map storing the offset of the next message that will be fetched. */
-    private Map<TopicPartition, Long> m_curOffsetMap;
 
     /**
      * Constructor.
@@ -155,19 +214,52 @@ public final class KNIMEKafkaConsumer {
         m_properties.putAll(m_connectionProps);
         m_properties.putAll(builder.m_consumerProps);
         m_conValTimeout = builder.m_conValTimeout;
+        m_time = builder.m_time;
         m_topics = builder.m_topics;
         m_isPattern = builder.m_isPattern;
-        m_infinitePolling = builder.m_infinitePolling;
         m_convertToJSON = builder.m_convertToJSON;
-        m_appendTopic = builder.m_appendTopic;
-        m_offset = builder.m_offset;
-        m_batchSize = builder.m_batchSize;
+        m_appendRecordInfo = builder.m_appendRecordInfo;
+        m_rowIdOffset = builder.m_rowIdOffset;
+        m_totNumMsgs = builder.m_totNumMsgs;
         m_pollTimeout = builder.m_pollTimeout;
-        m_lookAhead = builder.m_lookAhead;
-        m_starved = false;
+        m_breakCond = builder.m_breakCond;
+        m_zoneId = builder.m_zoneId;
         m_consumer = null;
-        m_endOffsets = null;
-        m_curOffsetMap = null;
+    }
+
+    /**
+     * Constructs a builder to create a {@link KNIMEKafkaConsumer} that polls the given number of messages.
+     *
+     * @param connectionProps the connection properties
+     * @param consumerProps the consumer properties
+     * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
+     * @param isPattern <code>True</code> if topics is a pattern
+     * @param conValTimeout the connection validation timeout
+     * @param totNumMsgs the total number of messages to be polled
+     * @return the builder with the given break condition.
+     */
+    public static Builder getMsgCountBuilder(final Properties connectionProps, final Properties consumerProps,
+        final String topics, final boolean isPattern, final int conValTimeout, final long totNumMsgs) {
+        return new Builder(connectionProps, consumerProps, topics, isPattern, conValTimeout, BreakCondition.MSG_COUNT,
+            totNumMsgs, -1);
+    }
+
+    /**
+     * Constructs a builder to create a {@link KNIMEKafkaConsumer} that polls up until the given point in time.
+     *
+     * @param connectionProps the connection properties
+     * @param consumerProps the consumer properties
+     * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
+     * @param isPattern <code>True</code> if topics is a pattern
+     * @param conValTimeout the connection validation timeout
+     * @param time the time up until messages have to be consumed
+     * @return the builder with the given break condition.
+     *
+     */
+    public static Builder getDateBuilder(final Properties connectionProps, final Properties consumerProps,
+        final String topics, final boolean isPattern, final int conValTimeout, final long time) {
+        return new Builder(connectionProps, consumerProps, topics, isPattern, conValTimeout, BreakCondition.TIME, -1,
+            time);
     }
 
     /**
@@ -180,47 +272,44 @@ public final class KNIMEKafkaConsumer {
     {
         // Required parameters
         /** The connection properties. */
-        private final Properties m_connectionProps;
+        final Properties m_connectionProps;
 
         /** The consumer properties. */
-        private final Properties m_consumerProps;
+        final Properties m_consumerProps;
 
         /** The topics (list) or pattern to subscribe to. */
-        private final String m_topics;
+        final String m_topics;
 
         /** <code>True</code> if the topics string represents a pattern. */
-        private final boolean m_isPattern;
-
-        /** <code>True</code> if the consumer shall poll messages infinitely. */
-        private final boolean m_infinitePolling;
+        final boolean m_isPattern;
 
         /** The connection validation timeout. */
-        private final int m_conValTimeout;
+        final int m_conValTimeout;
+
+        /** The consumption break condition. */
+        final BreakCondition m_breakCond;
+
+        /** The total number of messages to be consumed. */
+        final long m_totNumMsgs;
+
+        /** The time up until messages have to be consumed. */
+        final long m_time;
 
         // Optional parameters
         /** <code>True</code> if the message has to be converted to a JSON cell. */
-        private boolean m_convertToJSON = false;
+        boolean m_convertToJSON = false;
 
-        /**
-         * <code>True</code> if the a column has to be append to the table informing about the topic the message
-         * originated from.
-         */
-        private boolean m_appendTopic = false;
+        /** <code>True</code> if columns have to be append to the table storing information about the record. */
+        boolean m_appendRecordInfo = false;
 
-        /**
-         * <code>True</code> indicates at the end of every execution it is checked for additional messages. Only
-         * required for loop execution.
-         */
-        private boolean m_lookAhead = false;
-
-        /** The message offset. */
-        private long m_offset = 0;
-
-        /** The batch size. */
-        private long m_batchSize = 50;
+        /** The row id offset. */
+        long m_rowIdOffset = 0;
 
         /** The poll timeout. */
-        private long m_pollTimeout = 1000;
+        long m_pollTimeout = 1000;
+
+        /** The zone id. */
+        private ZoneId m_zoneId = ZoneId.systemDefault();
 
         /**
          * Constructor.
@@ -230,34 +319,23 @@ public final class KNIMEKafkaConsumer {
          * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
          * @param isPattern <code>True</code> if topics is a pattern
          * @param conValTimeout the connection validation timeout
+         * @param breakCondition the consumption break condition
+         * @param totNumMsgs the total number of messages to be polled
+         * @param time the time up until messages have to be consumed
          */
-        public Builder(final Properties connectionProps, final Properties consumerProps, final String topics,
-            final boolean isPattern, final int conValTimeout) {
-            this(connectionProps, connectionProps, topics, isPattern, false, conValTimeout);
-        }
-
-        /**
-         * Constructor.
-         *
-         * @param connectionProps the connection properties
-         * @param consumerProps the consumer properties
-         * @param topics the topics (a list or pattern) the {@link KafkaConsumer} subscribes to
-         * @param isPattern <code>True</code> if topics is a pattern
-         * @param infinitePolling <code>True</code> if the consumer shall poll messages infinitely
-         * @param conValTimeout the connection validation timeout
-         * @deprecated KNIME does not support endless-streaming
-         */
-        @Deprecated
-        public Builder(final Properties connectionProps, final Properties consumerProps, final String topics,
-            final boolean isPattern, final boolean infinitePolling, final int conValTimeout) {
+        Builder(final Properties connectionProps, final Properties consumerProps, final String topics,
+            final boolean isPattern, final int conValTimeout, final BreakCondition breakCondition,
+            final long totNumMsgs, final long time) {
             m_connectionProps = new Properties();
             m_connectionProps.putAll(connectionProps);
             m_consumerProps = new Properties();
             m_consumerProps.putAll(consumerProps);
             m_topics = topics;
             m_isPattern = isPattern;
-            m_infinitePolling = infinitePolling;
             m_conValTimeout = conValTimeout;
+            m_breakCond = breakCondition;
+            m_totNumMsgs = totNumMsgs;
+            m_time = time;
         }
 
         /**
@@ -273,50 +351,25 @@ public final class KNIMEKafkaConsumer {
         }
 
         /**
-         * Sets the append topic flag. If <code>True</code> an additional column is added to the output informing about
-         * the topic the message originated from.
+         * Sets the append records information flag. If <code>True</code> additional columns are added to the output
+         * storing message information.
          *
          * @param append the append topic flag
          * @return the builder itself
          */
-        public Builder appendTopic(final boolean append) {
-            m_appendTopic = append;
-            return this;
-        }
-
-        /**
-         * Defines whether at the end of every execution the consumer shall check for additional messages. This is only
-         * required if the Consumer is executed in a loop.
-         *
-         * @param lookAhead <code>True</code> if the consumer shall look ahead at the end of every execution
-         * @return the builder itself
-         * @deprecated KNIME does not support endless-streaming
-         */
-        @Deprecated
-        public Builder lookAhead(final boolean lookAhead) {
-            m_lookAhead = lookAhead;
+        public Builder appendRecordInfo(final boolean append) {
+            m_appendRecordInfo = append;
             return this;
         }
 
         /**
          * Set the offset row id offset.
          *
-         * @param offset the number of the first row in the output
+         * @param rowIdOffset the number of the first row in the output
          * @return the builder itself
          */
-        public Builder setOffset(final long offset) {
-            m_offset = offset;
-            return this;
-        }
-
-        /**
-         * Sets the batch size, i.e. the maximum number of rows in the output table.
-         *
-         * @param batchSize the batch size
-         * @return the builder itself
-         */
-        public Builder setBatchSize(final long batchSize) {
-            m_batchSize = batchSize;
+        public Builder setRowIdOffset(final long rowIdOffset) {
+            m_rowIdOffset = rowIdOffset;
             return this;
         }
 
@@ -332,6 +385,17 @@ public final class KNIMEKafkaConsumer {
         }
 
         /**
+         * Sets the zone id used to create the message timestamp.
+         *
+         * @param zoneId the zone id
+         * @return the builder itself
+         */
+        public Builder setZoneId(final ZoneId zoneId) {
+            m_zoneId = zoneId;
+            return this;
+        }
+
+        /**
          * Builds the {@link KNIMEKafkaConsumer}.
          *
          * @return the properly initialized {@link KNIMEKafkaConsumer}
@@ -340,15 +404,6 @@ public final class KNIMEKafkaConsumer {
             return new KNIMEKafkaConsumer(this);
         }
 
-    }
-
-    /**
-     * Returns <code>True</code> if the execution of the consumer was stopped due to too many successive empty polls.
-     *
-     * @return <code>True</code> if no new messages were found
-     */
-    public boolean isStarved() {
-        return m_starved;
     }
 
     /**
@@ -385,7 +440,7 @@ public final class KNIMEKafkaConsumer {
      */
     public BufferedDataTable execute(final ExecutionContext exec) throws Exception {
         final BufferedDataTableRowOutput output = new BufferedDataTableRowOutput(
-            exec.createDataContainer(createOutTableSpec(m_convertToJSON, m_appendTopic)));
+            exec.createDataContainer(createOutTableSpec(m_convertToJSON, m_appendRecordInfo)));
         execute(exec, output);
         return output.getDataTable();
     }
@@ -405,108 +460,56 @@ public final class KNIMEKafkaConsumer {
         final Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
 
         // init the consumer
-        initConsumer();
+        initConsumer(offsetMap);
 
         // while there are more messages and we were able to reconnect to Kafka
         while (!done) {
             // check for user interrupted
             exec.checkCanceled();
 
-            // reset offsetmap
-            offsetMap.clear();
-
             // poll the messages
             final ConsumerRecords<Long, String> consumerRecords = m_consumer.poll(m_pollTimeout);
-
-            // check if we have polled messages no records for more than the allowed number of times
-            if (consumerRecords.count() == 0) {
-                // break the loop if necessary
-                done = !m_infinitePolling;
-                // set the starved flag to true (indicates that there were no more messages)
-                m_starved = done;
-                continue;
-            }
-
+            //            setEndOffsets(consumerRecords.partitions());
             // push all messages to the output table
-            for (final ConsumerRecord<Long, String> record : consumerRecords) {
-                output.push(convert(record));
-                // add the offset to the map
-                offsetMap.put(new TopicPartition(record.topic(), record.partition()),
-                    new OffsetAndMetadata(record.offset() + 1));
-                // if the number of messages we pushed equals the batch size we stop
-                // a negative batch size indicates that we will only stop if the
-                // consumer starved (note that no integer overflow can occur here)
-                if (m_batchSize > 0 && ++numOfPolledRec == m_batchSize) {
-                    done = true;
-                    break;
+            if (consumerRecords.count() > 0) {
+                Iterator<TopicPartition> partIter = consumerRecords.partitions().iterator();
+                while (!done && partIter.hasNext()) {
+                    final TopicPartition msgPartition = partIter.next();
+                    for (ConsumerRecord<Long, String> record : consumerRecords.records(msgPartition)) {
+                        if (m_breakCond == BreakCondition.TIME && record.timestamp() > m_time) {
+                            m_consumer.pause(Collections.singleton(msgPartition));
+                            break;
+                        }
+                        // append the record to the output
+                        output.push(convert(record));
+                        // add the offset to the map
+                        offsetMap.put(msgPartition, new OffsetAndMetadata(record.offset() + 1));
+                        if (m_breakCond == BreakCondition.MSG_COUNT && ++numOfPolledRec == m_totNumMsgs) {
+                            done = true;
+                            break;
+                        }
+                    }
                 }
+            } else {
+                // break the loop if no messages were polled
+                done = true;
             }
-            // commit the offsets w.r.t. to the processed messages
-            m_consumer.commitSync(offsetMap);
         }
-        // only look ahead if consumer hasn't starved yet and is not executed in infinite mode
-        if (m_lookAhead && !m_infinitePolling && !m_starved) {
-            m_starved = willStarve(offsetMap);
-        }
+        // commit the offsets w.r.t. to the processed messages
+        m_consumer.commitSync(offsetMap);
         // close the output
         output.close();
-    }
-
-    /**
-     * Checks if the next execution of poll will contain any messages.
-     *
-     * @param offsetMap the recently committed offsets
-     * @return {@code true} if the next execution of poll contains messages
-     */
-    private boolean willStarve(final Map<TopicPartition, OffsetAndMetadata> offsetMap) {
-        // update the current offsets
-        offsetMap.entrySet().stream()//
-            .forEach(e -> m_curOffsetMap.put(e.getKey(), e.getValue().offset()));
-
-        // if there are no unprocessed messages check if a producer has written to the assigned
-        // partitions after they were assigned to the consumer
-        if (!hasUnprocessedMsgs()) {
-            // update the end offsets and check again
-            m_endOffsets = getEndOffsets(m_consumer.assignment());
-            return !hasUnprocessedMsgs();
-        }
-        return false;
-    }
-
-    /**
-     * Checks if any of the assigned partition contains unprocessed messages.
-     *
-     * @return {@code true} if there are unprocessed messages
-     */
-    private boolean hasUnprocessedMsgs() {
-        for (Entry<TopicPartition, Long> entry : m_endOffsets.entrySet()) {
-            if (m_curOffsetMap.get(entry.getKey()) < entry.getValue()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @param assignment
-     * @return
-     */
-    private Map<TopicPartition, Long> getCurOffsets(final Collection<TopicPartition> assignment) {
-        return assignment.stream().collect(Collectors.toMap(p -> p, p -> m_consumer.position(p)));
-    }
-
-    private Map<TopicPartition, Long> getEndOffsets(final Collection<TopicPartition> assignment) {
-        return m_consumer.endOffsets(assignment);
     }
 
     /**
      * Creates the output table spec.
      *
      * @param useJSON <code>True</code> if the messages are converted to {@link JSONCell}
-     * @param appendTopic <code>True</code> if a column informing about the origin of the messages has to be added
+     * @param appendRecordInfo <code>True</code> if columns have to be append to the table storing information about the
+     *            record.
      * @return the output table spec
      */
-    public static DataTableSpec createOutTableSpec(final boolean useJSON, final boolean appendTopic) {
+    public static DataTableSpec createOutTableSpec(final boolean useJSON, final boolean appendRecordInfo) {
         final DataTableSpecCreator specCreator = new DataTableSpecCreator();
         final DataType type;
         if (useJSON) {
@@ -514,22 +517,33 @@ public final class KNIMEKafkaConsumer {
         } else {
             type = StringCell.TYPE;
         }
-        final DataColumnSpecCreator cellSpecCreator = new DataColumnSpecCreator("Message", type);
-        specCreator.addColumns(cellSpecCreator.createSpec());
-        if (appendTopic) {
-            cellSpecCreator.setName("Topic");
-            cellSpecCreator.setType(StringCell.TYPE);
-            specCreator.addColumns(cellSpecCreator.createSpec());
+        specCreator.addColumns(createColSpec("Message", type));
+        if (appendRecordInfo) {
+            specCreator.addColumns(RECORD_COL_SPECS);
         }
         return specCreator.createSpec();
     }
 
     /**
+     * Creates a column with the given spec.
+     *
+     * @param colName the name of the column to be created
+     * @param dataType the data type of the column to be created
+     * @return the data column spec
+     */
+    private static DataColumnSpec createColSpec(final String colName, final DataType dataType) {
+        return new DataColumnSpecCreator(colName, dataType).createSpec();
+    }
+
+    /**
      * Initializes the KnimeConsumer.
+     *
+     * @param offsetMap the current offsets that have to be committed if the partitions are revoked
      *
      * @return the {@link KafkaConsumer}
      */
-    private KafkaConsumer<Long, String> initConsumer() throws InvalidSettingsException {
+    private KafkaConsumer<Long, String> initConsumer(final Map<TopicPartition, OffsetAndMetadata> offsetMap)
+        throws InvalidSettingsException {
         if (m_consumer != null) {
             return m_consumer;
         }
@@ -544,14 +558,12 @@ public final class KNIMEKafkaConsumer {
 
             @Override
             public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
+                m_consumer.commitSync(offsetMap);
+                offsetMap.clear();
             }
 
             @Override
             public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
-                if (!m_infinitePolling && m_lookAhead) {
-                    m_endOffsets = getEndOffsets(partitions);
-                    m_curOffsetMap = getCurOffsets(partitions);
-                }
             }
         };
 
@@ -577,10 +589,16 @@ public final class KNIMEKafkaConsumer {
         } else {
             msgCell = new StringCell(record.value());
         }
-        if (m_appendTopic) {
-            return new DefaultRow(RowKey.createRowKey(m_offset++), msgCell, new StringCell(record.topic()));
+        if (m_appendRecordInfo) {
+            return new DefaultRow(RowKey.createRowKey(m_rowIdOffset++), msgCell//
+                , StringCellFactory.create(record.topic())//
+                , IntCellFactory.create(record.partition())//
+                , LongCellFactory.create(record.offset())//
+                , ZonedDateTimeCellFactory
+                    .create(ZonedDateTime.ofInstant(Instant.ofEpochMilli(record.timestamp()), m_zoneId))//
+            );
         }
-        return new DefaultRow(RowKey.createRowKey(m_offset++), msgCell);
+        return new DefaultRow(RowKey.createRowKey(m_rowIdOffset++), msgCell);
     }
 
 }

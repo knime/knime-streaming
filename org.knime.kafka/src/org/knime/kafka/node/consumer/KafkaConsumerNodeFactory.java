@@ -51,6 +51,7 @@ package org.knime.kafka.node.consumer;
 import org.knime.core.node.NodeDialogPane;
 import org.knime.core.node.NodeFactory;
 import org.knime.core.node.NodeView;
+import org.knime.kafka.ui.KafkaConsumerNodeDialog;
 
 /**
  * {@link NodeFactory} implementation of the Kafka consumer node.
@@ -98,6 +99,6 @@ public final class KafkaConsumerNodeFactory extends NodeFactory<KafkaConsumerNod
      */
     @Override
     protected NodeDialogPane createNodeDialogPane() {
-        return new KafkaConsumerNodeDialog();
+        return new KafkaConsumerNodeDialog(KafkaConsumerNodeModel.createConsumerSettingsModel());
     }
 }

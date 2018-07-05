@@ -62,184 +62,174 @@ import org.apache.kafka.common.config.ConfigDef;
  */
 public final class KafkaProperty implements Comparable<KafkaProperty> {
 
-	/** The Kafka property key. */
-	private final String m_key;
+    /** The Kafka property key. */
+    private final String m_key;
 
-	/** The {@link ConfigDef} type. */
-	private final ConfigDef.Type m_type;
+    /** The {@link ConfigDef} type. */
+    private final ConfigDef.Type m_type;
 
-	/** The Kafka property value. */
-	private final String m_value;
+    /** The Kafka property value. */
+    private final String m_value;
 
-	/** The Kafka property tooltip. */
-	private final String m_toolTip;
+    /** The Kafka property tooltip. */
+    private final String m_toolTip;
 
-	/**
-	 * Constructor.
-	 *
-	 * @param key
-	 *            the Kafka property key
-	 * @param value
-	 *            the Kafka property value
-	 * @param type
-	 *            the {@link ConfigDef} type
-	 * @param toolTip
-	 *            the Kafka property tooltip
-	 * @param hasDefault
-	 *            <code>True</code> if a default value is provided
-	 */
-	public KafkaProperty(final String key, final Object value, final ConfigDef.Type type, final String toolTip,
-			final boolean hasDefault) {
-		// set the key and the type
-		m_key = key;
-		m_type = type;
+    /**
+     * Constructor.
+     *
+     * @param key the Kafka property key
+     * @param value the Kafka property value
+     * @param type the {@link ConfigDef} type
+     * @param toolTip the Kafka property tooltip
+     * @param hasDefault <code>True</code> if a default value is provided
+     */
+    public KafkaProperty(final String key, final Object value, final ConfigDef.Type type, final String toolTip,
+        final boolean hasDefault) {
+        // set the key and the type
+        m_key = key;
+        m_type = type;
 
-		// set the value to empty string if no default is provided
-		if (value == null || !hasDefault) {
-			m_value = "";
-		} else if (value instanceof String) {
-			// if its a string just set it
-			m_value = (String) value;
-		} else if (m_type == ConfigDef.Type.CLASS) {
-			// if it is a class remove the leading class string
-			String tmp = String.valueOf(value);
-			tmp = tmp.replaceAll("^class", "").trim();
-			m_value = tmp;
-		} else if (m_type == ConfigDef.Type.LIST) {
-			// we know this is a list, hence this cast is save
-			if (value instanceof List<?>) {
-				final List<?> tmp = (List<?>) value;
-				m_value = tmp.stream()//
-						.map(this::convert)//
-						.collect(Collectors.joining(",", "", ""));
-			} else {
-				m_value = "";
-			}
-		} else {
-			// otherwise get the string value
-			m_value = String.valueOf(value);
-		}
-		// wrap the text so it can be used as a tooltip
-		m_toolTip = ("<html>" + WordUtils.wrap(toolTip, 60) + "</html>").replace("\n", "<br>");
-	}
+        // set the value to empty string if no default is provided
+        if (value == null || !hasDefault) {
+            m_value = "";
+        } else if (value instanceof String) {
+            // if its a string just set it
+            m_value = (String)value;
+        } else if (m_type == ConfigDef.Type.CLASS) {
+            // if it is a class remove the leading class string
+            String tmp = String.valueOf(value);
+            tmp = tmp.replaceAll("^class", "").trim();
+            m_value = tmp;
+        } else if (m_type == ConfigDef.Type.LIST) {
+            // we know this is a list, hence this cast is save
+            if (value instanceof List<?>) {
+                final List<?> tmp = (List<?>)value;
+                m_value = tmp.stream()//
+                    .map(this::convert)//
+                    .collect(Collectors.joining(",", "", ""));
+            } else {
+                m_value = "";
+            }
+        } else {
+            // otherwise get the string value
+            m_value = String.valueOf(value);
+        }
+        // wrap the text so it can be used as a tooltip
+        m_toolTip = ("<html>" + WordUtils.wrap(toolTip, 60, "<br>", false) + "</html>");
+    }
 
-	/**
-	 * Constructor.
-	 *
-	 * @param key
-	 *            the Kafka property key
-	 * @param value
-	 *            the Kafka property value
-	 * @param type
-	 *            the {@link ConfigDef} type
-	 * @param toolTip
-	 *            the Kafka property tooltip
-	 */
-	private KafkaProperty(final String key, final String value, final ConfigDef.Type type, final String toolTip) {
-		m_key = key;
-		m_value = value;
-		m_type = type;
-		m_toolTip = toolTip;
-	}
+    /**
+     * Constructor.
+     *
+     * @param key the Kafka property key
+     * @param value the Kafka property value
+     * @param type the {@link ConfigDef} type
+     * @param toolTip the Kafka property tooltip
+     */
+    private KafkaProperty(final String key, final String value, final ConfigDef.Type type, final String toolTip) {
+        m_key = key;
+        m_value = value;
+        m_type = type;
+        m_toolTip = toolTip;
+    }
 
-	/**
-	 * Create a clone of this property
-	 *
-	 * @return a clone of this property
-	 */
-	KafkaProperty createClone() {
-		return new KafkaProperty(m_key, m_value, m_type, m_toolTip);
-	}
+    /**
+     * Create a clone of this property
+     *
+     * @return a clone of this property
+     */
+    KafkaProperty createClone() {
+        return new KafkaProperty(m_key, m_value, m_type, m_toolTip);
+    }
 
-	/**
-	 * Converts the given object to a string depending on its class.
-	 *
-	 * @param toConvert
-	 *            the object to be converted
-	 * @return the converted object
-	 */
-	private String convert(final Object toConvert) {
-		if (toConvert instanceof String) {
-			return (String) toConvert;
-		} else {
-			return String.valueOf(toConvert).replaceAll("^class", "").trim();
-		}
-	}
+    /**
+     * Converts the given object to a string depending on its class.
+     *
+     * @param toConvert the object to be converted
+     * @return the converted object
+     */
+    private String convert(final Object toConvert) {
+        if (toConvert instanceof String) {
+            return (String)toConvert;
+        } else {
+            return String.valueOf(toConvert).replaceAll("^class", "").trim();
+        }
+    }
 
-	/**
-	 * Return the key of this property.
-	 *
-	 * @return the key of this property
-	 */
-	public String getKey() {
-		return m_key;
-	}
+    /**
+     * Return the key of this property.
+     *
+     * @return the key of this property
+     */
+    public String getKey() {
+        return m_key;
+    }
 
-	/**
-	 * Return the value of this property.
-	 *
-	 * @return the value of this property
-	 */
-	String getValue() {
-		return m_value;
-	}
+    /**
+     * Return the value of this property.
+     *
+     * @return the value of this property
+     */
+    String getValue() {
+        return m_value;
+    }
 
-	/**
-	 * Return the {@link ConfigDef} type of this property.
-	 *
-	 * @return the {@link ConfigDef} type of this property
-	 */
-	ConfigDef.Type getType() {
-		return m_type;
-	}
+    /**
+     * Return the {@link ConfigDef} type of this property.
+     *
+     * @return the {@link ConfigDef} type of this property
+     */
+    ConfigDef.Type getType() {
+        return m_type;
+    }
 
-	/**
-	 * Return the tooltip of this property.
-	 *
-	 * @return the tooltip of this property
-	 */
-	String getToolTip() {
-		return m_toolTip;
-	}
+    /**
+     * Return the tooltip of this property.
+     *
+     * @return the tooltip of this property
+     */
+    String getToolTip() {
+        return m_toolTip;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public int compareTo(final KafkaProperty o) {
-		return m_key.compareTo(o.m_key);
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int compareTo(final KafkaProperty o) {
+        return m_key.compareTo(o.m_key);
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String toString() {
-		return m_key;
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+        return m_key;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public boolean equals(final Object anObject) {
-		if (anObject == this) {
-			return true;
-		}
-		if (anObject instanceof KafkaProperty) {
-			KafkaProperty anotherProp = (KafkaProperty) anObject;
-			return (m_key.equals(anotherProp.m_key) && m_value.equals(anotherProp.m_value)
-					&& m_type.equals(anotherProp.m_type) && m_toolTip.equals(anotherProp.m_toolTip));
-		}
-		return false;
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(final Object anObject) {
+        if (anObject == this) {
+            return true;
+        }
+        if (anObject instanceof KafkaProperty) {
+            KafkaProperty anotherProp = (KafkaProperty)anObject;
+            return (m_key.equals(anotherProp.m_key) && m_value.equals(anotherProp.m_value)
+                && m_type.equals(anotherProp.m_type) && m_toolTip.equals(anotherProp.m_toolTip));
+        }
+        return false;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public int hashCode() {
-	    return super.hashCode();
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+        return super.hashCode();
+    }
 
 }

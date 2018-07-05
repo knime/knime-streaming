@@ -126,7 +126,7 @@ public abstract class AbstractSettingsModelKafka {
      * @param settings the settings to be validated
      * @throws InvalidSettingsException - If settings are incomplete/deficient.
      */
-    public final void validateSettings(final NodeSettingsRO settings) throws InvalidSettingsException {
+    public void validateSettings(final NodeSettingsRO settings) throws InvalidSettingsException {
         for (final SettingsModel model : m_models) {
             model.validateSettings(settings);
         }

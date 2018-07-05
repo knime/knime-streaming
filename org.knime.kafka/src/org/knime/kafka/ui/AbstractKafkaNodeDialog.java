@@ -109,7 +109,6 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
         // set the settings model
         m_kafkaSettings = kafkaSettings;
         // add the general and advanced tabs
-        addTab(TAB_SETTINGS, createSettingsTab());
         addTab(TAB_ADVANCED_SETTINGS, createAdvancedTab());
     }
 
@@ -137,6 +136,14 @@ public abstract class AbstractKafkaNodeDialog<T extends AbstractSettingsModelKaf
     protected final void registerDialogComponent(final DialogComponent... comp) {
         Arrays.stream(comp)//
             .forEach(m_components::add);
+    }
+
+    /**
+     * Initializes the settings tab. The inheriting class has to call this method in its constructor.
+     */
+    protected void initSettingsTab() {
+        addTabAt(0, TAB_SETTINGS, createSettingsTab());
+        setSelected(TAB_SETTINGS);
     }
 
     /**
