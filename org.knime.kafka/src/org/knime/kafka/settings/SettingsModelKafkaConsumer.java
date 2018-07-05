@@ -105,7 +105,7 @@ public final class SettingsModelKafkaConsumer extends AbstractClientIDSettingsMo
 
     /** The settings model storing the consumption break condition. */
     private final SettingsModelString m_breakCondition =
-        new SettingsModelString("stop-execution", KNIMEKafkaConsumer.BreakCondition.TIME.toString());
+        new SettingsModelString("stop-criterion", KNIMEKafkaConsumer.BreakCondition.TIME.toString());
 
     /** The settings model storing the maximum number of requested messages per poll. */
     private final SettingsModelIntegerBounded m_maxReqMsgs =
