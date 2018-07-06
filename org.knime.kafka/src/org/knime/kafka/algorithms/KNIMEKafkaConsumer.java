@@ -109,10 +109,10 @@ public final class KNIMEKafkaConsumer {
     public enum BreakCondition {
 
             /** Indicates that the consumer shall stop polling messages after a certain number of messages. */
-            MSG_COUNT("Message count"),
+            MSG_COUNT("<html>Stop when number of<br/>consumed messages <br/>exceeds:</html>"),
 
             /** Indicates that the consumer should only poll messages before a certain time. */
-            TIME("<html>Message timestamp<br>after</html>");
+            TIME("<html>Stop when message<br/>timestamp exceeds:</html>");
 
         /** Missing name exception. */
         private static final String NAME_MUST_NOT_BE_NULL = "Name must not be null";

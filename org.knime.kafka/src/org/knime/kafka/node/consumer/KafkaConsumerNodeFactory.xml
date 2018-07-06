@@ -55,17 +55,17 @@
 				Determines how to stop the execution of this node.
 				<ul>
 					<li>
-						<b>Message count</b> This node will stop once no more messages are available, but
-						at the latest when the specified number of messages were consumed.
+						<b>Stop when number of consumed messages exceeds</b> This node will stop once no more messages 
+						are available, but at the latest after the specified number of messages were consumed.
 					</li>
 					<li>
-						<b>Message timestamp after</b> Consumes all messages created up until the selected 
-						date &amp; time. If the selected data &amp; time is in the future, the execution
-						stops once a poll request returns no messages.
+						<b>Stop when message timestamp exceeds</b> Consumes all messages created up until the
+						selected date &amp; time. If the selected date &amp; time is in the future, the 
+						execution stops once a poll request returns no messages.
 						<br/>
 						Selecting &lt;Use execution date &amp; time&gt; consumes all 
-						messages up until the time the node is executed. The &lt;Current time&gt; button 
-						sets the date &amp; time to the current local time.
+						messages up until the date &amp; time the node is executed. The &lt;Current time&gt;
+						button sets the date &amp; time to the current local time.
 					</li>
 				</ul>
 			</option>

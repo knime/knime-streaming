@@ -58,7 +58,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import javax.swing.BorderFactory;
-import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 
@@ -100,7 +99,7 @@ public final class KafkaConsumerNodeDialog extends AbstractKafkaClientIDDialog<S
     private static final String MAX_NUM_REC_COMP_LABEL = "Max number of messages per poll";
 
     /** The total number of polled records component label. */
-    private static final String TOTAL_NUM_REC_COMP_LABEL = "Total number of messages";
+    private static final String TOTAL_NUM_REC_COMP_LABEL = "";
 
     /** The append message info columns component label. */
     private static final String MSG_INFO_COLUMN_COMP_LABEL = "Append message info columns";
@@ -195,33 +194,27 @@ public final class KafkaConsumerNodeDialog extends AbstractKafkaClientIDDialog<S
 
         // add msg count button
         panel.add(btnGrpDiaComp.getButton(KNIMEKafkaConsumer.BreakCondition.MSG_COUNT.toString()), gbc);
-        ++gbc.gridy;
         ++gbc.gridx;
         gbc.insets = new Insets(0, 10, 0, 0);
+        gbc.anchor = GridBagConstraints.SOUTHWEST;
 
         // create/register/add the total number of messages dialog component
         DialogComponentNumberEdit totMsgsDiaComp = new DialogComponentNumberEdit(getModel().getTotalMsgSettingsModel(),
             TOTAL_NUM_REC_COMP_LABEL, DEFAULT_NUMBER_INPUT_COMP_WIDTH);
         registerDialogComponent(totMsgsDiaComp);
         panel.add(totMsgsDiaComp.getComponentPanel(), gbc);
-        gbc.insets = new Insets(0, 0, 0, 0);
+        gbc.insets = new Insets(15, 0, 0, 0);
         ++gbc.gridy;
         gbc.gridx = 0;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
 
         // add the time button
         panel.add(btnGrpDiaComp.getButton(KNIMEKafkaConsumer.BreakCondition.TIME.toString()), gbc);
-        ++gbc.gridy;
         ++gbc.gridx;
-        gbc.insets = new Insets(0, 10, 0, 0);
+        gbc.insets = new Insets(9, 10, 0, 0);
 
         // add the time panel
         panel.add(createTimePanel(), gbc);
-        gbc.gridheight = 1;
-        ++gbc.gridy;
-        gbc.weighty = 1;
-
-        // add dummy component
-        panel.add(Box.createVerticalGlue(), gbc);
 
         // return the panel
         return panel;
