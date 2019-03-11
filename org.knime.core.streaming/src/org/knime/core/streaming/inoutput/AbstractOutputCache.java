@@ -48,9 +48,12 @@
  */
 package org.knime.core.streaming.inoutput;
 
+import java.io.IOException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.knime.core.node.CanceledExecutionException;
+import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.InputPortRole;
@@ -175,10 +178,13 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
      *
      * @param role The role of the connection, e.g. for data ports if it can be streamed or needs staging.
      * @param cc The connection itself (for progress events).
+     * @param exec The current execution context
      * @return The non-null port input.
      * @throws InterruptedException If canceled while waiting for the set-up.
+     * @throws IOException if the port's data cannot be read
+     * @throws CanceledExecutionException if the user cancels while the port is retrieved
      */
-    public abstract PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc)
-        throws InterruptedException;
+    public abstract PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc,
+        final ExecutionContext exec) throws InterruptedException, IOException, CanceledExecutionException;
 
 }

@@ -48,10 +48,14 @@
  */
 package org.knime.core.streaming.inoutput;
 
+import java.io.IOException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.knime.core.node.CanceledExecutionException;
+import org.knime.core.node.ExecutionContext;
+import org.knime.core.node.Node;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.InputPortRole;
@@ -120,10 +124,11 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
 
     /** {@inheritDoc} */
     @Override
-    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc) throws InterruptedException {
+    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc, final ExecutionContext exec)
+        throws InterruptedException, IOException, CanceledExecutionException {
         CheckUtils.checkState(!role.isStreamable(), "Non-table port can't be streamed");
         CheckUtils.checkState(!role.isDistributable(), "Non-table port can't be distributed");
-        return new PortObjectInput(getPortObject());
+        return new PortObjectInput(Node.copyPortObject(getPortObject(), exec));
     }
 
     /** {@inheritDoc} */

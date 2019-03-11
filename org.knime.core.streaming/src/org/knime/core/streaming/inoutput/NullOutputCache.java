@@ -48,6 +48,7 @@
  */
 package org.knime.core.streaming.inoutput;
 
+import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.streamable.InputPortRole;
@@ -71,7 +72,8 @@ public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
 
     /** {@inheritDoc} */
     @Override
-    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc) throws InterruptedException {
+    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc, final ExecutionContext exec)
+        throws InterruptedException {
         return null;
     }
 

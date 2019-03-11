@@ -144,7 +144,7 @@ final class SingleNodeStreamer {
                 final FlowObjectStack[] flowObjectStacks = new FlowObjectStack[m_upStreamCaches.length];
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
                     final ConnectionContainer inCC = parent.getIncomingConnectionFor(m_nnc.getID(), i);
-                    inputs[i] = m_upStreamCaches[i].getPortInput(inputPortRoles[i], inCC);
+                    inputs[i] = m_upStreamCaches[i].getPortInput(inputPortRoles[i], inCC, m_execContext);
                     final FlowObjectStack stack = m_upStreamCaches[i].getFlowObjectStack(inputPortRoles[i]);
                     flowObjectStacks[i] = stack;
                 }

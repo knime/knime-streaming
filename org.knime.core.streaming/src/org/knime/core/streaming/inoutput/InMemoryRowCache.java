@@ -175,7 +175,8 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     /** {@inheritDoc} */
     @Override
-    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc) throws InterruptedException {
+    public PortInput getPortInput(final InputPortRole role, final ConnectionContainer cc, final ExecutionContext exec)
+        throws InterruptedException {
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
         try {
