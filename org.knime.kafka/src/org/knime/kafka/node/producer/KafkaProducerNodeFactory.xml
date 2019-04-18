@@ -4,7 +4,7 @@
 	type="Sink" icon="kafka_producer.png">
 	<name>Kafka Producer</name>
 	<shortDescription>
-		Allows to send messages to Kafka.
+		Allows to send messages to Kafka synchronously, asynchronously, or in a fire and forget manner.
 	</shortDescription>
 	<fullDescription>
 		<intro>
@@ -22,6 +22,12 @@
 			</option>
 			<option name="Message column">
 				A String or JSON column containing the messages that have to be send to the Kafka cluster.
+			</option>
+			<option name="Sending type">
+				Defines how messages are send. If <tt>Asynchronously</tt> or <tt>Synchronously</tt> is
+				selected, the node will throw an exception if any of the message could not be send to Kafka.
+				In the case of <tt>Fire and forget</tt> it is unkown whether or not the message has been
+				successfully sent. 
 			</option>
 		</tab>
 		<tab name="Transaction Settings">

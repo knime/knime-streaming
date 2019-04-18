@@ -51,9 +51,16 @@ package org.knime.kafka.algorithms;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.knime.core.data.DataCell;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
@@ -63,6 +70,9 @@ import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.streamable.DataTableRowInput;
 import org.knime.core.node.streamable.RowInput;
+import org.knime.core.util.ThreadUtils.CallableWithContext;
+import org.knime.kafka.settings.SettingsModelKafkaProducer;
+import org.knime.kafka.settings.SettingsModelKafkaProducer.SendingType;
 
 /**
  * Class to send messages to Kafka.
@@ -98,6 +108,35 @@ public final class KNIMEKafkaProducer {
     /** The commit interval. -1 means that no intermediate transaction commits will be triggered. */
     private final int m_commitInterval;
 
+    /** The {@link SendingType}. */
+    private final SendingType m_sendingType;
+
+    /** Reference to an exception that is thrown when sending asynchronously. */
+    private final AtomicReference<Exception> m_exception;
+
+    /** The asynchronous thread validating successful termination of all sends. */
+    private final Thread m_asyncThread;
+
+    /** The blocking queue storing the futures for each send record. */
+    private final BlockingQueue<Object> m_asyncQueue;
+
+    /** The close object used to stop the asynchronous validation callable. */
+    private static final Object CLOSE = new Object();
+
+    /**
+     * Constructor.
+     *
+     * @param connectionProps the connection properties
+     * @param conValTimeout the connection validation timeout
+     * @param settings the @link {@link SettingsModelKafkaProducer} storing all settings
+     */
+    public KNIMEKafkaProducer(final Properties connectionProps, final int conValTimeout,
+        final SettingsModelKafkaProducer settings) {
+        this(connectionProps, settings.getProperties(), settings.getTopics(), settings.getMessageColumn(),
+            conValTimeout, settings.useTransactions(), settings.getTransactionCommitInterval(),
+            settings.getSendingType());
+    }
+
     /**
      * Constructor.
      *
@@ -109,9 +148,11 @@ public final class KNIMEKafkaProducer {
      * @param transactionMode defines whether whether messages have to be send transaction wise or not
      * @param commitInterval triggers a transaction commit after the specified number of read input rows (-1 results in
      *            a single transaction commit after the whole input has been processed)
+     * @param sendingType the {@link SendingType}
      */
-    public KNIMEKafkaProducer(final Properties connectionProps, final Properties producerProps, final String topic,
-        final String msgCol, final int conValTimeout, final boolean transactionMode, final int commitInterval) {
+    private KNIMEKafkaProducer(final Properties connectionProps, final Properties producerProps, final String topic,
+        final String msgCol, final int conValTimeout, final boolean transactionMode, final int commitInterval,
+        final SendingType sendingType) {
         m_connectionProps = new Properties();
         m_connectionProps.putAll(connectionProps);
         m_props = new Properties();
@@ -122,6 +163,32 @@ public final class KNIMEKafkaProducer {
         m_conValTimeout = conValTimeout;
         m_transactionMode = transactionMode;
         m_commitInterval = commitInterval;
+        m_exception = new AtomicReference<>();
+        m_sendingType = sendingType;
+        if (m_sendingType == SendingType.ASYNCHRONOUS) {
+            m_asyncQueue = new LinkedBlockingQueue<>();
+            m_asyncThread = new Thread(new FutureTask<Void>(new CallableWithContext<Void>() {
+
+                @SuppressWarnings("unchecked")
+                @Override
+                protected Void callWithContext() throws Exception {
+                    Object o;
+                    while ((o = m_asyncQueue.take()) != CLOSE) {
+                        try {
+                            ((Future<RecordMetadata>)o).get();
+                        } catch (final Exception e) {
+                            m_exception.compareAndSet(null, e);
+                            break;
+                        }
+                    }
+                    return null;
+                }
+            }), "Async Kafka-Producer");
+            m_asyncThread.start();
+        } else {
+            m_asyncQueue = null;
+            m_asyncThread = null;
+        }
     }
 
     /**
@@ -176,7 +243,7 @@ public final class KNIMEKafkaProducer {
         while ((row = input.poll()) != null) {
             try {
                 exec.checkCanceled();
-
+                checkAsyncException();
                 // update progress
                 final String rowKey = row.getKey().toString();
                 final String msg;
@@ -197,7 +264,7 @@ public final class KNIMEKafkaProducer {
                 // send the message to all topics
                 for (final String topic : m_topic) {
                     final ProducerRecord<Long, String> record = new ProducerRecord<>(topic, message);
-                    m_producer.send(record).get();
+                    sendRecord(record);
                 }
                 if (m_transactionMode && m_commitInterval > 0 && ++numSendRec == m_commitInterval) {
                     numSendRec = 0;
@@ -208,6 +275,9 @@ public final class KNIMEKafkaProducer {
                 // abort the transaction if necessary
                 if (m_transactionMode) {
                     m_producer.abortTransaction();
+                }
+                if (m_asyncThread != null) {
+                    m_asyncThread.interrupt();
                 }
                 throw (e);
             }
@@ -222,6 +292,33 @@ public final class KNIMEKafkaProducer {
     }
 
     /**
+     * @throws Exception
+     *
+     */
+    private void checkAsyncException() throws Exception {
+        if (m_exception.get() != null) {
+            throw m_exception.get();
+        }
+    }
+
+    private void sendRecord(final ProducerRecord<Long, String> record)
+        throws InterruptedException, ExecutionException {
+        switch (m_sendingType) {
+            case ASYNCHRONOUS:
+                m_asyncQueue.offer(m_producer.send(record));
+                break;
+            case SYCHRONOUS:
+                m_producer.send(record).get();
+                break;
+            case FIRE_FORGET:
+                m_producer.send(record);
+                break;
+            default:
+                throw new IllegalArgumentException("There is send behaviour defined for this SendType");
+        }
+    }
+
+    /**
      * Initializes the producer.
      */
     private void initProducer() throws InvalidSettingsException {
@@ -233,8 +330,10 @@ public final class KNIMEKafkaProducer {
 
     /**
      * Closes the producer.
+     *
+     * @throws Exception
      */
-    public void close() {
+    public void close() throws Exception {
         // if the producer is not null
         if (m_producer != null) {
             // TODO: If the nodes was executed in streaming mode
@@ -244,7 +343,14 @@ public final class KNIMEKafkaProducer {
             // However a better solution would be to change the logging
             // level of the KafkaProducer in this case.
             if (Thread.currentThread().isInterrupted()) {
+                if(m_asyncThread!=null) {
+                    m_asyncThread.interrupt();
+                }
                 Thread.interrupted();
+            }
+            if (m_exception.get() == null && m_asyncThread != null) {
+                m_asyncQueue.offer(CLOSE);
+                m_asyncThread.join();
             }
             // close the producer
             try {
@@ -253,6 +359,7 @@ public final class KNIMEKafkaProducer {
             } finally {
                 m_producer = null;
             }
+            checkAsyncException();
         }
     }
 }

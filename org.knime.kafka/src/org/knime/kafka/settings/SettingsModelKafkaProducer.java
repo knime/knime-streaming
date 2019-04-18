@@ -58,6 +58,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.LongSerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.knime.core.node.InvalidSettingsException;
+import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.defaultnodesettings.SettingsModelBoolean;
 import org.knime.core.node.defaultnodesettings.SettingsModelInteger;
 import org.knime.core.node.defaultnodesettings.SettingsModelIntegerBounded;
@@ -125,6 +126,57 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
         }
     }
 
+    /**
+     * Enum specifying how the producer should deal with records send to the Kafka broker.
+     *
+     * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
+     */
+    public enum SendingType {
+
+            /** Sends records asynchronously to the Kafka broker. */
+            ASYNCHRONOUS("Asynchronous"),
+
+            /** Sends records synchronously to the Kafka broker. */
+            SYCHRONOUS("Synchronous"),
+
+            /** Sends records ignoring whether or not the Kafka broker receives them. */
+            FIRE_FORGET("Fire and forget");
+
+        /** Missing name exception. */
+        private static final String NAME_MUST_NOT_BE_NULL = "Name must not be null";
+
+        /** IllegalArgumentException prefix. */
+        private static final String ARGUMENT_EXCEPTION_PREFIX = "No SendingType constant with name: ";
+
+        /** The options UI name. */
+        private final String m_name;
+
+        private SendingType(final String name) {
+            m_name = name;
+        }
+
+        @Override
+        public String toString() {
+            return m_name;
+        }
+
+        /**
+         * Returns the enum for a given String
+         *
+         * @param name the enum name
+         * @return the enum
+         * @throws InvalidSettingsException if the given name is not associated with an {@link SendingType} value
+         */
+        public static SendingType getEnum(final String name) throws InvalidSettingsException {
+            if (name == null) {
+                throw new InvalidSettingsException(NAME_MUST_NOT_BE_NULL);
+            }
+            return Arrays.stream(values()).filter(t -> t.m_name.equals(name)).findFirst()
+                .orElseThrow(() -> new InvalidSettingsException(ARGUMENT_EXCEPTION_PREFIX + name));
+        }
+
+    }
+
     /** All Kafka properties concerning the producers. */
     private static final List<KafkaProperty> PRODUCER_PROPERTIES = Helper4KafkaConfig.getProperties(
         ProducerConfig.class, new HashSet<String>(Arrays.asList(new String[]{ProducerConfig.TRANSACTIONAL_ID_CONFIG})));
@@ -152,12 +204,30 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
     private final SettingsModelString m_transCommitOption =
         new SettingsModelString("transaction-commit-option", TransactionCommitOption.TABLE_END.toString());
 
+    /** The settings model storing the send option. */
+    private final SettingsModelString m_sendingOption =
+        new SettingsModelString("sending-option", SendingType.ASYNCHRONOUS.toString()) {
+
+            @Override
+            protected void validateSettingsForModel(final NodeSettingsRO settings) throws InvalidSettingsException {
+                if (settings.containsKey(getKey())) {
+                    super.validateSettingsForModel(settings);
+                }
+            }
+
+            @Override
+            protected void loadSettingsForModel(final NodeSettingsRO settings) {
+                setStringValue(settings.getString(getKey(), SendingType.SYCHRONOUS.toString()));
+            }
+
+        };
+
     /**
      * Constructor.
      */
     public SettingsModelKafkaProducer() {
         super(PRODUCER_PROPERTIES);
-        addModel(m_col, m_topics, m_transID, m_transCommitInterval, m_useTrans, m_transCommitOption);
+        addModel(m_col, m_topics, m_transID, m_transCommitInterval, m_useTrans, m_transCommitOption, m_sendingOption);
         setAndAddKafkaModel();
     }
 
@@ -220,6 +290,19 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
     }
 
     /**
+     * Returns the stored {@link SendingType}.
+     *
+     * @return the set {@code SendingType}
+     */
+    public SendingType getSendingType() {
+        try {
+            return SendingType.getEnum(m_sendingOption.getStringValue());
+        } catch (InvalidSettingsException ex) {
+            return SendingType.ASYNCHRONOUS;
+        }
+    }
+
+    /**
      * Returns the settings model storing the topics
      *
      * @return the topics settings model
@@ -271,6 +354,15 @@ public final class SettingsModelKafkaProducer extends AbstractClientIDSettingsMo
      */
     public SettingsModelString getTransactionCommitOptionSettingsModel() {
         return m_transCommitOption;
+    }
+
+    /**
+     * Returns the settings model storing the send option.
+     *
+     * @return the send option settings model
+     */
+    public SettingsModelString getSendOptionSettingsModel() {
+        return m_sendingOption;
     }
 
     /**

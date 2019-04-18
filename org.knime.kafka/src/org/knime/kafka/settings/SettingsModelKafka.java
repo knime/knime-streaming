@@ -65,226 +65,219 @@ import org.knime.kafka.port.KafkaConnectorPortSpec;
 import org.knime.kafka.ui.KafkaModel;
 
 /**
- * Settings Model storing all information required to connect to Kafka and use
- * {@link KNIMEKafkaConsumer} and {@link KNIMEKafkaProducer}.
+ * Settings Model storing all information required to connect to Kafka and use {@link KNIMEKafkaConsumer} and
+ * {@link KNIMEKafkaProducer}.
  *
  * @author Mark Ortmann, KNIME GmbH, Berlin, Germany
  *
  */
 public final class SettingsModelKafka extends SettingsModel {
 
-	/** The model type id. */
-	private static final String MODEL_TYPE_ID = "SMID_kafka";
+    /** The model type id. */
+    private static final String MODEL_TYPE_ID = "SMID_kafka";
 
-	/** The port spec exception message. */
-	private static final String PORT_SPEC_EXCEPTION = "Missing port spec of type"
-			+ KafkaConnectorPortSpec.class.getSimpleName();
+    /** The port spec exception message. */
+    private static final String PORT_SPEC_EXCEPTION =
+        "Missing port spec of type " + KafkaConnectorPortSpec.class.getSimpleName();
 
-	/** The config name. */
-	private final String m_configName;
+    /** The config name. */
+    private final String m_configName;
 
-	/** The Kafka model. */
-	private final KafkaModel m_model;
+    /** The Kafka model. */
+    private final KafkaModel m_model;
 
-	/** Flag indicating whether a KafkaConnectorPortSpec is required or not. */
-	private boolean m_requiresSpec;
+    /** Flag indicating whether a KafkaConnectorPortSpec is required or not. */
+    private boolean m_requiresSpec;
 
-	/**
-	 * Constructor.
-	 *
-	 * @param configName
-	 *            the config name
-	 * @param model
-	 *            the {@link KafkaModel}
-	 * @param requiresSpec
-	 *            flag indicating whether an {@link KafkaConnectorPortSpec} is
-	 *            required or not
-	 */
-	public SettingsModelKafka(final String configName, final KafkaModel model, final boolean requiresSpec) {
-		m_configName = configName;
-		m_requiresSpec = requiresSpec;
-		m_model = model;
-	}
+    /**
+     * Constructor.
+     *
+     * @param configName the config name
+     * @param model the {@link KafkaModel}
+     * @param requiresSpec flag indicating whether an {@link KafkaConnectorPortSpec} is required or not
+     */
+    public SettingsModelKafka(final String configName, final KafkaModel model, final boolean requiresSpec) {
+        m_configName = configName;
+        m_requiresSpec = requiresSpec;
+        m_model = model;
+    }
 
-	/**
-	 * Returns the Kafka model.
-	 *
-	 * @return the Kafka model
-	 */
-	public KafkaModel getModel() {
-		return m_model;
-	}
+    /**
+     * Returns the Kafka model.
+     *
+     * @return the Kafka model
+     */
+    public KafkaModel getModel() {
+        return m_model;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@SuppressWarnings("unchecked")
-	@Override
-	protected SettingsModelKafka createClone() {
-		return new SettingsModelKafka(m_configName, m_model.createClone(), m_requiresSpec);
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @SuppressWarnings("unchecked")
+    @Override
+    protected SettingsModelKafka createClone() {
+        return new SettingsModelKafka(m_configName, m_model.createClone(), m_requiresSpec);
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected String getModelTypeID() {
-		return MODEL_TYPE_ID;
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected String getModelTypeID() {
+        return MODEL_TYPE_ID;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected String getConfigName() {
-		return m_configName;
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected String getConfigName() {
+        return m_configName;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected void loadSettingsForDialog(final NodeSettingsRO settings, final PortObjectSpec[] specs)
-			throws NotConfigurableException {
-		// check if the port exists if it is required
-		checkPorts(specs);
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void loadSettingsForDialog(final NodeSettingsRO settings, final PortObjectSpec[] specs)
+        throws NotConfigurableException {
+        // check if the port exists if it is required
+        checkPorts(specs);
 
-		// if an input port is required, access it and use it to block
-		// properties
-		if (m_requiresSpec) {
-			for (final PortObjectSpec spec : specs) {
-				if (spec instanceof KafkaConnectorPortSpec) {
-					m_model.blockProperties(((KafkaConnectorPortSpec) spec).getBlockedProperties());
-				}
-			}
-		}
-		// load the settings
-		try {
-			loadSettingsForModel(settings);
-		} catch (InvalidSettingsException e) {
-			throw (new NotConfigurableException(e.getMessage()));
-		}
-	}
+        // if an input port is required, access it and use it to block
+        // properties
+        if (m_requiresSpec) {
+            for (final PortObjectSpec spec : specs) {
+                if (spec instanceof KafkaConnectorPortSpec) {
+                    m_model.blockProperties(((KafkaConnectorPortSpec)spec).getBlockedProperties());
+                }
+            }
+        }
+        // load the settings
+        try {
+            loadSettingsForModel(settings);
+        } catch (InvalidSettingsException e) {
+            throw (new NotConfigurableException(e.getMessage()));
+        }
+    }
 
-	/**
-	 * Validates the model.
-	 *
-	 * @throws InvalidSettingsException
-	 *             - If the model is not valid
-	 */
-	public void validate() throws InvalidSettingsException {
-		m_model.validate();
-	}
+    /**
+     * Validates the model.
+     *
+     * @throws InvalidSettingsException - If the model is not valid
+     */
+    public void validate() throws InvalidSettingsException {
+        m_model.validate();
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected void saveSettingsForDialog(final NodeSettingsWO settings) throws InvalidSettingsException {
-		validate();
-		saveSettingsForModel(settings);
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void saveSettingsForDialog(final NodeSettingsWO settings) throws InvalidSettingsException {
+        validate();
+        saveSettingsForModel(settings);
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected void validateSettingsForModel(final NodeSettingsRO settings) throws InvalidSettingsException {
-		// save since we use the same schema to save the rows
-		@SuppressWarnings("unchecked")
-		final Enumeration<ConfigStringEntry> rows = settings.getNodeSettings(getConfigName()).children();
-		while (rows.hasMoreElements()) {
-			final ConfigStringEntry row = rows.nextElement();
-			m_model.validate(new String[] { row.getKey(), row.getString() });
-		}
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void validateSettingsForModel(final NodeSettingsRO settings) throws InvalidSettingsException {
+        // save since we use the same schema to save the rows
+        @SuppressWarnings("unchecked")
+        final Enumeration<ConfigStringEntry> rows = settings.getNodeSettings(getConfigName()).children();
+        while (rows.hasMoreElements()) {
+            final ConfigStringEntry row = rows.nextElement();
+            m_model.validate(new String[]{row.getKey(), row.getString()});
+        }
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected void loadSettingsForModel(final NodeSettingsRO settings) throws InvalidSettingsException {
-		// clear the model
-		m_model.clear();
-		// save since we use the same schema to save the rows
-		@SuppressWarnings("unchecked")
-		final Enumeration<ConfigStringEntry> rows = settings.getNodeSettings(getConfigName()).children();
-		while (rows.hasMoreElements()) {
-			final ConfigStringEntry row = rows.nextElement();
-			m_model.addRow(new String[] { row.getKey(), row.getString() });
-		}
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void loadSettingsForModel(final NodeSettingsRO settings) throws InvalidSettingsException {
+        // clear the model
+        m_model.clear();
+        // save since we use the same schema to save the rows
+        if (settings.containsKey(getConfigName())) {
+            @SuppressWarnings("unchecked")
+            final Enumeration<ConfigStringEntry> rows = settings.getNodeSettings(getConfigName()).children();
+            while (rows.hasMoreElements()) {
+                final ConfigStringEntry row = rows.nextElement();
+                m_model.addRow(new String[]{row.getKey(), row.getString()});
+            }
+        }
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	protected void saveSettingsForModel(final NodeSettingsWO settings) {
-		final NodeSettingsWO rowsCont = settings.addNodeSettings(getConfigName());
-		for (final String[] row : m_model.getData()) {
-			rowsCont.addString(row[KafkaModel.KEY_IDX], row[KafkaModel.VAL_IDX]);
-		}
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    protected void saveSettingsForModel(final NodeSettingsWO settings) {
+        final NodeSettingsWO rowsCont = settings.addNodeSettings(getConfigName());
+        for (final String[] row : m_model.getData()) {
+            rowsCont.addString(row[KafkaModel.KEY_IDX], row[KafkaModel.VAL_IDX]);
+        }
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String toString() {
-		return getClass().getSimpleName() + " ('" + m_configName + "')";
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + " ('" + m_configName + "')";
+    }
 
-	/**
-	 * Calling the method causes the UI component associated with this model to
-	 * update.
-	 */
-	public void updateComponent() {
-		m_model.fireTableDataChanged();
-	}
+    /**
+     * Calling the method causes the UI component associated with this model to update.
+     */
+    public void updateComponent() {
+        m_model.fireTableDataChanged();
+    }
 
-	/**
-	 * Checks if the required port spec is available
-	 *
-	 * @param specs
-	 *            the available port specs
-	 * @throws NotConfigurableException
-	 *             - A port spec is required but none are provided, or none of
-	 *             the provided specs matches the required
-	 */
-	public void checkPorts(final PortObjectSpec[] specs) throws NotConfigurableException {
-		if (m_requiresSpec) {
-			if (specs == null) {
-				throw new NotConfigurableException(PORT_SPEC_EXCEPTION);
-			}
-			boolean containsSpec = false;
-			for (final PortObjectSpec spec : specs) {
-				if (spec != null && spec instanceof KafkaConnectorPortSpec) {
-					containsSpec = true;
-					break;
-				}
-			}
-			if (!containsSpec) {
-				throw new NotConfigurableException(PORT_SPEC_EXCEPTION);
-			}
-		}
-	}
+    /**
+     * Checks if the required port spec is available
+     *
+     * @param specs the available port specs
+     * @throws NotConfigurableException - A port spec is required but none are provided, or none of the provided specs
+     *             matches the required
+     */
+    public void checkPorts(final PortObjectSpec[] specs) throws NotConfigurableException {
+        if (m_requiresSpec) {
+            if (specs == null) {
+                throw new NotConfigurableException(PORT_SPEC_EXCEPTION);
+            }
+            boolean containsSpec = false;
+            for (final PortObjectSpec spec : specs) {
+                if (spec != null && spec instanceof KafkaConnectorPortSpec) {
+                    containsSpec = true;
+                    break;
+                }
+            }
+            if (!containsSpec) {
+                throw new NotConfigurableException(PORT_SPEC_EXCEPTION);
+            }
+        }
+    }
 
-	/**
-	 * Return the properties.
-	 *
-	 * @return the properties
-	 */
-	public Properties getProperties() {
-		return m_model.getProperties();
-	}
+    /**
+     * Return the properties.
+     *
+     * @return the properties
+     */
+    public Properties getProperties() {
+        return m_model.getProperties();
+    }
 
-	/**
-	 * Assigns the blocked properties to the model.
-	 *
-	 * @param blockedProperties
-	 *            the blocked properties
-	 */
-	public void setBlockedProps(final Set<String> blockedProperties) {
+    /**
+     * Assigns the blocked properties to the model.
+     *
+     * @param blockedProperties the blocked properties
+     */
+    public void setBlockedProps(final Set<String> blockedProperties) {
         m_model.blockProperties(blockedProperties);
     }
 }

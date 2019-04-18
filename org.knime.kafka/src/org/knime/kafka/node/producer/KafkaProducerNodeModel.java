@@ -225,9 +225,7 @@ final class KafkaProducerNodeModel extends NodeModel {
      */
     private void run(final RowInput input, final Properties connectionProps, final int conValTimeout,
         final ExecutionContext exec) throws Exception {
-        final KNIMEKafkaProducer producer = new KNIMEKafkaProducer(connectionProps, m_producerSettings.getProperties(),
-            m_producerSettings.getTopics(), m_producerSettings.getMessageColumn(), conValTimeout,
-            m_producerSettings.useTransactions(), m_producerSettings.getTransactionCommitInterval());
+        final KNIMEKafkaProducer producer = new KNIMEKafkaProducer(connectionProps, conValTimeout, m_producerSettings);
         try {
             // execute the producer
             producer.execute(exec, input);

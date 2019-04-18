@@ -72,9 +72,11 @@ import org.knime.core.node.defaultnodesettings.DialogComponentButtonGroup;
 import org.knime.core.node.defaultnodesettings.DialogComponentColumnNameSelection;
 import org.knime.core.node.defaultnodesettings.DialogComponentNumberEdit;
 import org.knime.core.node.defaultnodesettings.DialogComponentString;
+import org.knime.core.node.defaultnodesettings.DialogComponentStringSelection;
 import org.knime.core.node.defaultnodesettings.SettingsModelString;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.kafka.settings.SettingsModelKafkaProducer;
+import org.knime.kafka.settings.SettingsModelKafkaProducer.SendingType;
 import org.knime.kafka.settings.SettingsModelKafkaProducer.TransactionCommitOption;
 
 /**
@@ -96,6 +98,9 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
 
     /** The message column component label. */
     private static final String MESSAGE_COLUMN_COMP_LABEL = "Message column";
+
+    /** The sending type label. */
+    private static final String SENDING_TYPE_LABEL = "Sending type";
 
     /** The use transaction component label. */
     private static final String USE_TRANSACTIONS = "Use transactions";
@@ -247,7 +252,8 @@ public final class KafkaProducerNodeDialog extends AbstractKafkaClientIDDialog<S
             topics//
             , new DialogComponentColumnNameSelection(getModel().getMessageColumnSettingsModel(),
                 MESSAGE_COLUMN_COMP_LABEL, 0, true, StringValue.class)//
-        };
+            , new DialogComponentStringSelection(getModel().getSendOptionSettingsModel(), SENDING_TYPE_LABEL,
+                Arrays.stream(SendingType.values()).map(o -> o.toString()).collect(Collectors.toList()))};
 
         // register the components
         registerDialogComponent(diaComps);
