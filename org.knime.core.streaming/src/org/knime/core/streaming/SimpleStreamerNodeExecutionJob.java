@@ -201,7 +201,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     protected NodeContainerExecutionStatus mainExecute() {
         NodeContainer nodeContainer = getNodeContainer();
         if (!(nodeContainer instanceof SubNodeContainer)) {
-            String message = "Streaming execution is only available for wrapped metanodes.";
+            String message = "Streaming execution is only available for components.";
             nodeContainer.setNodeMessage(new NodeMessage(Type.ERROR, message));
             LOGGER.error(message);
             return NodeContainerExecutionStatus.FAILURE;
@@ -441,7 +441,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         Map<NodeContainer, SingleNodeStreamer> resultMap = new LinkedHashMap<>();
         for (NodeContainer nc : allNodeContainers) {
             if (nc.getNodeContainerState().isExecuted()) {
-                final String msg = String.format("Wrapped Metanode must not contain executed"
+                final String msg = String.format("Component must not contain executed"
                     + " nodes in order to be streamed (\"%s\" is executed)", nc.getNameWithID());
                 throw new WrappedNodeExecutionStatusException(msg, newFailure(msg));
             }
