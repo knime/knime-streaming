@@ -62,6 +62,7 @@ import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
+import org.knime.core.node.port.inactive.InactiveBranchPortObject;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortObjectInput;
@@ -182,8 +183,12 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         try {
             if (role.isStreamable()) {
                 if (m_isDiamondSource) { // don't stream to avoid deadlocks
-                    BufferedDataTable stagedTable = waitForStagedTable();
-                    return new StagedTableRowInput(stagedTable, cc);
+                    PortObject stagedTable = waitForStagedTable();
+                    if (stagedTable instanceof BufferedDataTable) {
+                        return new StagedTableRowInput((BufferedDataTable)stagedTable, cc);
+                    } else {
+                        return new PortObjectInput(stagedTable);
+                    }
                 } else { // real streaming
                     int streamConsumersID = m_nrStreamConsumersCreated++;
                     getPortObjectSpec(); // wait for port object spec to be available.
@@ -191,8 +196,10 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                     return new InMemoryRowInput(streamConsumersID, cc, this);
                 }
             } else {
-                BufferedDataTable stagedTable = waitForStagedTable();
-                InMemoryRowCache.fireProgressEvent(cc, false, stagedTable.size());
+                PortObject stagedTable = waitForStagedTable();
+                if (stagedTable instanceof BufferedDataTable) {
+                    InMemoryRowCache.fireProgressEvent(cc, false, ((BufferedDataTable)stagedTable).size());
+                }
                 return new PortObjectInput(stagedTable);
             }
         } finally {
@@ -203,15 +210,34 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
     /**
      * Waits until the table is assembled and then returns it.
      *
-     * @return The table, not null.
+     * @return The table or an {@link InactiveBranchPortObject}, if input is inactive.
      * @throws InterruptedException If interrupted while waiting.
      */
-    private BufferedDataTable waitForStagedTable() throws InterruptedException {
+    private PortObject waitForStagedTable() throws InterruptedException {
         assert getLock().isHeldByCurrentThread();
-        while (m_stagedDataTable == null) {
+        while (m_stagedDataTable == null && !isInactive()) {
             m_requireFullDataConsumeCondition.await();
         }
-        return m_stagedDataTable;
+        if (isInactive()) {
+            return InactiveBranchPortObject.INSTANCE;
+        } else {
+            return m_stagedDataTable;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setInactive() {
+        super.setInactive();
+        final ReentrantLock lock = getLock();
+        lock.lock();
+        try {
+            m_requireFullDataConsumeCondition.signalAll();
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** {@inheritDoc} */
@@ -233,9 +259,12 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         final ReentrantLock lock = getLock();
         lock.lock();
         try {
+            if (isInactive()) {
+                return InactiveBranchPortObject.INSTANCE;
+            }
             final DataTableSpec dts = getPortObjectSpecNoWait();
             CheckUtils.checkState(dts != null, "Spec not expected to be null at this point");
-            return m_stagedDataTable != null ? m_stagedDataTable : m_context.createVoidTable(dts);
+           return m_stagedDataTable != null ? m_stagedDataTable : m_context.createVoidTable(dts);
         } finally {
             lock.unlock();
         }

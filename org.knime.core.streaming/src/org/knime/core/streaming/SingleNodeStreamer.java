@@ -48,6 +48,7 @@
  */
 package org.knime.core.streaming;
 
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -64,6 +65,8 @@ import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObject;
 import org.knime.core.node.port.flowvariable.FlowVariablePortObjectSpec;
+import org.knime.core.node.port.inactive.InactiveBranchConsumer;
+import org.knime.core.node.port.inactive.InactiveBranchPortObjectSpec;
 import org.knime.core.node.streamable.DataTableRowInput;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.MergeOperator;
@@ -115,7 +118,7 @@ final class SingleNodeStreamer {
         m_nnc = CheckUtils.checkArgumentNotNull(nnc, "Arg must not be null");
         m_outputCaches = CheckUtils.checkArgumentNotNull(outputCaches, "Arg must not be null");
         m_upStreamCaches = CheckUtils.checkArgumentNotNull(upStreamCaches, "Arg must not be null");
-    }
+   }
 
     Callable<NativeNodeContainerExecutionResult> newCallable() {
         return new SingleNodeStreamerCallable();
@@ -149,10 +152,26 @@ final class SingleNodeStreamer {
                     flowObjectStacks[i] = stack;
                 }
 
-
                 final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
+                boolean isInactive = false;
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
-                    inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
+                    if (m_upStreamCaches[i].isInactive()) {
+                        inSpecs[i] = InactiveBranchPortObjectSpec.INSTANCE;
+                    } else {
+                        inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
+                    }
+                    isInactive = isInactive || m_upStreamCaches[i].isInactive();
+                }
+                if (isInactive) {
+                    if (!(nM instanceof InactiveBranchConsumer)) {
+                        Arrays.stream(m_outputCaches).forEach(c -> c.setInactive());
+
+                        //early abort
+                        NativeNodeContainerExecutionResult executionResult =
+                            m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0));
+                        executionResult.setSuccess(true);
+                        return executionResult;
+                    }
                 }
                 final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
 

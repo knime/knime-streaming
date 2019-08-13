@@ -81,6 +81,7 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
     private final Class<SPEC> m_specClass;
 
     private SPEC m_portObjectSpec;
+    private boolean m_isInactive;
 
     /** Inits locks etc.
      * @param nnc The associated node (used to query variables).
@@ -121,6 +122,26 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
     }
 
     /**
+     * Sets this cache/port output to inactive.
+     */
+    public void setInactive() {
+        m_lock.lock();
+        try {
+            m_portObjectSpecNotSetCondition.signalAll();
+        } finally {
+            m_lock.unlock();
+        }
+        m_isInactive = true;
+    }
+
+    /**
+     * @return whether this cache/port output is inactive.
+     */
+    public boolean isInactive() {
+        return m_isInactive;
+    }
+
+    /**
      * Gets the output spec associated with the output (stalling until one is available).
      *
      * @return The non-null spec.
@@ -129,7 +150,7 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
     public SPEC getPortObjectSpec() throws InterruptedException {
         m_lock.lockInterruptibly();
         try {
-            while (m_portObjectSpec == null) {
+            while (m_portObjectSpec == null && !m_isInactive) {
                 m_portObjectSpecNotSetCondition.await();
             }
             return m_portObjectSpec;

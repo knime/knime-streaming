@@ -58,6 +58,7 @@ import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.Node;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
+import org.knime.core.node.port.inactive.InactiveBranchPortObject;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortObjectInput;
@@ -113,7 +114,7 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         final Lock lock = getLock();
         lock.lockInterruptibly();
         try {
-            while (m_portObject == null) {
+            while (m_portObject == null && !isInactive()) {
                 m_portObjectInputNotSetCondition.await();
             }
             return m_portObject;
@@ -128,7 +129,14 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         throws InterruptedException, IOException, CanceledExecutionException {
         CheckUtils.checkState(!role.isStreamable(), "Non-table port can't be streamed");
         CheckUtils.checkState(!role.isDistributable(), "Non-table port can't be distributed");
-        return new PortObjectInput(Node.copyPortObject(getPortObject(), exec));
+        PortObject portObject = getPortObject();
+        if (portObject == null) {
+            //should only be the case if inactive
+            assert isInactive();
+            return new PortObjectInput(InactiveBranchPortObject.INSTANCE);
+        } else {
+            return new PortObjectInput(Node.copyPortObject(portObject, exec));
+        }
     }
 
     /** {@inheritDoc} */
@@ -142,6 +150,9 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
      */
     @Override
     public PortObject getPortObjectMock() {
+        if (isInactive()) {
+            return InactiveBranchPortObject.INSTANCE;
+        }
         CheckUtils.checkState(m_portObject != null, "PortObject expected to be set at this point");
         return m_portObject;
     }
@@ -168,6 +179,21 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         public void setPortObject(final PortObject portObject) {
             super.setPortObject(portObject);
             setObject(portObject);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void setInactive() {
+            NonTableOutputCache.this.setInactive();
+            final Lock lock = getLock();
+            lock.lock();
+            try {
+                m_portObjectInputNotSetCondition.signalAll();
+            } finally {
+                lock.unlock();
+            }
         }
     }
 

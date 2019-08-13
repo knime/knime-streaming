@@ -95,6 +95,14 @@ public final class InMemoryRowOutput extends RowOutput {
         m_rowCache.setFully(table);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void setInactive() {
+        m_rowCache.setInactive();
+    }
+
     /** {@inheritDoc} */
     @Override
     public void close() {

@@ -93,6 +93,8 @@ import org.knime.core.node.workflow.NodeExecutionJob;
 import org.knime.core.node.workflow.NodeID;
 import org.knime.core.node.workflow.NodeMessage;
 import org.knime.core.node.workflow.NodeMessage.Type;
+import org.knime.core.node.workflow.ScopeEndNode;
+import org.knime.core.node.workflow.ScopeStartNode;
 import org.knime.core.node.workflow.SingleNodeContainer;
 import org.knime.core.node.workflow.SubNodeContainer;
 import org.knime.core.node.workflow.WorkflowCreationHelper;
@@ -306,8 +308,13 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                         for (int o = 0; o < outSpecs.length; o++) {
                             AbstractOutputCache<? extends PortObjectSpec> outputCache =
                                     connectionCaches.get(new NodeIDWithOutport(innerNC.getID(), o));
-                            outSpecs[o] = outputCache.getPortObjectSpec();
-                            outObjects[o] = outputCache.getPortObjectMock();
+                            if (outputCache.isInactive()) {
+                                outSpecs[o] = InactiveBranchPortObjectSpec.INSTANCE;
+                                outObjects[o] = InactiveBranchPortObject.INSTANCE;
+                            } else {
+                                outSpecs[o] = outputCache.getPortObjectSpec();
+                                outObjects[o] = outputCache.getPortObjectMock();
+                            }
                         }
                         nodeExecResult.setPortObjectSpecs(outSpecs);
                         nodeExecResult.setPortObjects(outObjects);
