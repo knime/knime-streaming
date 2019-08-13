@@ -81,6 +81,8 @@ import org.knime.core.node.exec.SandboxedNodeCreator.SandboxedNode;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
 import org.knime.core.node.port.PortType;
+import org.knime.core.node.port.inactive.InactiveBranchPortObject;
+import org.knime.core.node.port.inactive.InactiveBranchPortObjectSpec;
 import org.knime.core.node.util.CheckUtils;
 import org.knime.core.node.workflow.ConnectionContainer;
 import org.knime.core.node.workflow.ConnectionProgress;
@@ -245,6 +247,8 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         Collection<NodeContainer> allNodeContainers = wfm.getNodeContainers();
         allNodeContainers.stream().forEach(nc -> nc.setNodeMessage(NodeMessage.NONE));
 
+        checkValidityforExecution(allNodeContainers);
+
         final Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches =
                 prepareConnectionCaches(wfm, allNodeContainers, execCreator);
 
@@ -363,11 +367,6 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         final ExecutionContextCreator execCreator) throws WrappedNodeExecutionStatusException {
         Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches = new LinkedHashMap<>();
         for (NodeContainer nc : allNodeContainers) {
-            if (!(nc instanceof NativeNodeContainer)) {
-                String msg = "Subnodes must only contain native nodes in order to be streamed: " + nc.getNameWithID();
-                LOGGER.error(msg);
-                throw new WrappedNodeExecutionStatusException(msg, newFailure(msg));
-            }
             NativeNodeContainer nnc = (NativeNodeContainer)nc;
             final NodeContainerCacheHandle ncCacheHandle = new NodeContainerCacheHandle(nnc);
             final boolean isDiamondStart = isDiamondStart(wfm, nnc);
@@ -408,6 +407,33 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             }
         }
         return connectionCaches;
+    }
+
+    private static void checkValidityforExecution(final Collection<NodeContainer> nodeContainers)
+        throws WrappedNodeExecutionStatusException {
+        for (NodeContainer nc : nodeContainers) {
+            if (!(nc instanceof NativeNodeContainer)) {
+                throwWrappedNodeExecutionStatusException(
+                    "Components must only contain native nodes in order to be streamed: " + nc.getNameWithID());
+            } else if (nc.getNodeContainerState().isExecuted()) {
+                throwWrappedNodeExecutionStatusException(String.format(
+                    "Component must not contain executed" + " nodes in order to be streamed (\"%s\" is executed)",
+                    nc.getNameWithID()));
+            } else if (nc instanceof NativeNodeContainer) {
+                NativeNodeContainer nnc = (NativeNodeContainer)nc;
+                for (Class<?> c : new Class[]{ScopeStartNode.class, ScopeEndNode.class}) {
+                    if (c.isAssignableFrom(nnc.getNodeModel().getClass())) {
+                        throwWrappedNodeExecutionStatusException(
+                            "Loops and other 'start-end' node pairs are not supported: " + nc.getNameWithID());
+                    }
+                }
+            }
+        }
+    }
+
+    private static void throwWrappedNodeExecutionStatusException(final String msg) throws WrappedNodeExecutionStatusException {
+        LOGGER.error(msg);
+        throw new WrappedNodeExecutionStatusException(msg, newFailure(msg));
     }
 
     private boolean isDiamondStart(final WorkflowManager wfm, final NativeNodeContainer nnc) {
