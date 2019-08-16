@@ -245,7 +245,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
     @Override
     public FlowObjectStack getFlowObjectStack(final InputPortRole inputRole) throws InterruptedException {
         if (inputRole.isStreamable()) {
-            return null;
+            return getSingleNodeContainer().createOutFlowObjectStack();
         }
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
