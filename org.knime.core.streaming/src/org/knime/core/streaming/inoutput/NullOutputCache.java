@@ -81,8 +81,8 @@ public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
      * {@inheritDoc}
      */
     @Override
-    public boolean isInactive() throws InterruptedException {
-        return false;
+    public void prepare() throws InterruptedException {
+        //nothing to do
     }
 
     /** {@inheritDoc} */

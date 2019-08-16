@@ -101,7 +101,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     private final Condition m_requireFullDataConsumeCondition;
 
-    private final Condition m_inactiveStateCondition;
+    private final Condition m_requirePrepareCondition;
 
     private final ExecutionContext m_context;
 
@@ -154,7 +154,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         m_acceptProduceCondition = lock.newCondition();
         m_requireConsumeCondition = lock.newCondition();
         m_requireFullDataConsumeCondition = lock.newCondition();
-        m_inactiveStateCondition = lock.newCondition();
+        m_requirePrepareCondition = lock.newCondition();
     }
 
     /** {@inheritDoc} */
@@ -218,10 +218,10 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      */
     private PortObject waitForStagedTable() throws InterruptedException {
         assert getLock().isHeldByCurrentThread();
-        while (m_stagedDataTable == null && !isInactiveNoWait()) {
+        while (m_stagedDataTable == null && !isInactive()) {
             m_requireFullDataConsumeCondition.await();
         }
-        if (isInactiveNoWait()) {
+        if (isInactive()) {
             return InactiveBranchPortObject.INSTANCE;
         } else {
             return m_stagedDataTable;
@@ -239,7 +239,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         try {
             m_requireConsumeCondition.signalAll();
             m_requireFullDataConsumeCondition.signalAll();
-            m_inactiveStateCondition.signalAll();
+            m_requirePrepareCondition.signalAll();
         } finally {
             lock.unlock();
         }
@@ -249,17 +249,16 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      * {@inheritDoc}
      */
     @Override
-    public boolean isInactive() throws InterruptedException {
+    public void prepare() throws InterruptedException {
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
         try {
-            while (m_currentChunk == null && m_stagedDataTable == null && !isInactiveNoWait()) {
-                m_inactiveStateCondition.await();
+            while (m_currentChunk == null && m_stagedDataTable == null && !isInactive()) {
+                m_requirePrepareCondition.await();
             }
         } finally {
             lock.unlock();
         }
-        return isInactiveNoWait();
     }
 
     /** {@inheritDoc} */
@@ -281,7 +280,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         final ReentrantLock lock = getLock();
         lock.lock();
         try {
-            if (isInactiveNoWait()) {
+            if (isInactive()) {
                 return InactiveBranchPortObject.INSTANCE;
             }
             final DataTableSpec dts = getPortObjectSpecNoWait();
@@ -371,7 +370,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 }
             }
             m_requireConsumeCondition.signalAll();
-            m_inactiveStateCondition.signalAll();
+            m_requirePrepareCondition.signalAll();
             return shouldCloseOutput;
         } finally {
             lock.unlock();
@@ -405,7 +404,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 }
                 m_stagedDataTable = table;
                 m_requireFullDataConsumeCondition.signalAll();
-                m_inactiveStateCondition.signalAll();
+                m_requirePrepareCondition.signalAll();
             }
             setPortObjectSpec(table.getDataTableSpec());
             List<DataRow> rows = new ArrayList<DataRow>(m_chunkSize);

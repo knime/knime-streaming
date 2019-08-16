@@ -144,23 +144,16 @@ final class SingleNodeStreamer {
                 final InputPortRole[] inputPortRoles = ArrayUtils.add(
                     nM.getInputPortRoles(), 0, InputPortRole.NONDISTRIBUTED_NONSTREAMABLE);
 
-                final FlowObjectStack[] flowObjectStacks = new FlowObjectStack[m_upStreamCaches.length];
-                for (int i = 0; i < m_upStreamCaches.length; i++) {
-                    final ConnectionContainer inCC = parent.getIncomingConnectionFor(m_nnc.getID(), i);
-                    inputs[i] = m_upStreamCaches[i].getPortInput(inputPortRoles[i], inCC, m_execContext);
-                    final FlowObjectStack stack = m_upStreamCaches[i].getFlowObjectStack(inputPortRoles[i]);
-                    flowObjectStacks[i] = stack;
-                }
-
                 final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
                 boolean isInactive = false;
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
+                    m_upStreamCaches[i].prepare();
                     if (m_upStreamCaches[i].isInactive()) {
                         inSpecs[i] = InactiveBranchPortObjectSpec.INSTANCE;
+                        isInactive = true;
                     } else {
                         inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
                     }
-                    isInactive = isInactive || m_upStreamCaches[i].isInactive();
                 }
                 if (isInactive) {
                     if (!(nM instanceof InactiveBranchConsumer)) {
@@ -173,7 +166,16 @@ final class SingleNodeStreamer {
                         return executionResult;
                     }
                 }
-                final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
+
+                final FlowObjectStack[] flowObjectStacks = new FlowObjectStack[m_upStreamCaches.length];
+                for (int i = 0; i < m_upStreamCaches.length; i++) {
+                    final ConnectionContainer inCC = parent.getIncomingConnectionFor(m_nnc.getID(), i);
+                    inputs[i] = m_upStreamCaches[i].getPortInput(inputPortRoles[i], inCC, m_execContext);
+                    final FlowObjectStack stack = m_upStreamCaches[i].getFlowObjectStack(inputPortRoles[i]);
+                    flowObjectStacks[i] = stack;
+                }
+
+               final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
 
                 // can be null
                 MergeOperator mergeOperator = nM.createMergeOperator();

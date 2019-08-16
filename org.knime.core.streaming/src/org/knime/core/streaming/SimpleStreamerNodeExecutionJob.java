@@ -307,7 +307,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                         for (int o = 0; o < outSpecs.length; o++) {
                             AbstractOutputCache<? extends PortObjectSpec> outputCache =
                                     connectionCaches.get(new NodeIDWithOutport(innerNC.getID(), o));
-                            if (outputCache.isInactiveNoWait()) {
+                            if (outputCache.isInactive()) {
                                 outSpecs[o] = InactiveBranchPortObjectSpec.INSTANCE;
                                 outObjects[o] = InactiveBranchPortObject.INSTANCE;
                             } else {

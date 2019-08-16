@@ -86,6 +86,7 @@ public final class InMemoryRowInput extends RowInput {
      */
     @Override
     public boolean isInactive() throws InterruptedException {
+        m_rowCache.prepare();
         return m_rowCache.isInactive();
     }
 

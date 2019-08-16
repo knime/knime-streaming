@@ -114,7 +114,7 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         final Lock lock = getLock();
         lock.lockInterruptibly();
         try {
-            while (m_portObject == null && !isInactiveNoWait()) {
+            while (m_portObject == null && !isInactive()) {
                 m_portObjectInputNotSetCondition.await();
             }
             return m_portObject;
@@ -127,10 +127,9 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
      * {@inheritDoc}
      */
     @Override
-    public boolean isInactive() throws InterruptedException {
+    public void prepare() throws InterruptedException {
         //wait for the port object to be available
         getPortObject();
-        return isInactiveNoWait();
     }
 
     /** {@inheritDoc} */
@@ -142,7 +141,7 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         PortObject portObject = getPortObject();
         if (portObject == null) {
             //should only be the case if inactive
-            assert isInactiveNoWait();
+            assert isInactive();
             return new PortObjectInput(InactiveBranchPortObject.INSTANCE);
         } else {
             return new PortObjectInput(Node.copyPortObject(portObject, exec));
@@ -160,7 +159,7 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
      */
     @Override
     public PortObject getPortObjectMock() {
-        if (isInactiveNoWait()) {
+        if (isInactive()) {
             return InactiveBranchPortObject.INSTANCE;
         }
         CheckUtils.checkState(m_portObject != null, "PortObject expected to be set at this point");
