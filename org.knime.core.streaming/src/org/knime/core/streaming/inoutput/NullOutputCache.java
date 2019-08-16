@@ -77,6 +77,14 @@ public final class NullOutputCache extends AbstractOutputCache<PortObjectSpec> {
         return null;
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isInactive() throws InterruptedException {
+        return false;
+    }
+
     /** {@inheritDoc} */
     @Override
     public PortObjectSpec getPortObjectSpec() {

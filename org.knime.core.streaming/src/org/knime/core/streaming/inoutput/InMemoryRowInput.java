@@ -81,6 +81,14 @@ public final class InMemoryRowInput extends RowInput {
         return m_consumerID;
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean isInactive() throws InterruptedException {
+        return m_rowCache.isInactive();
+    }
+
     /** {@inheritDoc} */
     @Override
     public DataTableSpec getDataTableSpec() {

@@ -135,9 +135,20 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
     }
 
     /**
+     * Determines whether the cache/connection is inactive.     * 
+     * Waits for the data/inactive status to be available before it returns.
+     *
      * @return whether this cache/port output is inactive.
+     * @throws InterruptedException
      */
-    public boolean isInactive() {
+    public abstract boolean isInactive() throws InterruptedException;
+
+    /**
+     * Same as {@link #isInactive()} without blocking.
+     *
+     * @return inactive status
+     */
+    public boolean isInactiveNoWait() {
         return m_isInactive;
     }
 

@@ -263,7 +263,6 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 new ExecutorCompletionService<>(STREAMING_EXECUTOR_SERVICE);
 
         for (Map.Entry<NodeContainer, SingleNodeStreamer> e : nodeToStreamerMap.entrySet()) {
-            NodeContainer nc = e.getKey();
             nodeThreadList.add(Pair.create(e.getKey(), completionService.submit(e.getValue().newCallable())));
         }
 
@@ -308,7 +307,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                         for (int o = 0; o < outSpecs.length; o++) {
                             AbstractOutputCache<? extends PortObjectSpec> outputCache =
                                     connectionCaches.get(new NodeIDWithOutport(innerNC.getID(), o));
-                            if (outputCache.isInactive()) {
+                            if (outputCache.isInactiveNoWait()) {
                                 outSpecs[o] = InactiveBranchPortObjectSpec.INSTANCE;
                                 outObjects[o] = InactiveBranchPortObject.INSTANCE;
                             } else {
