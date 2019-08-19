@@ -144,15 +144,13 @@ final class SingleNodeStreamer {
                 final InputPortRole[] inputPortRoles = ArrayUtils.add(
                     nM.getInputPortRoles(), 0, InputPortRole.NONDISTRIBUTED_NONSTREAMABLE);
 
-                final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
+                // check whether any of the inputs is inactive and
+                // possibly early abort
                 boolean isInactive = false;
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
                     m_upStreamCaches[i].prepare();
                     if (m_upStreamCaches[i].isInactive()) {
-                        inSpecs[i] = InactiveBranchPortObjectSpec.INSTANCE;
                         isInactive = true;
-                    } else {
-                        inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
                     }
                 }
                 if (isInactive) {
@@ -167,6 +165,7 @@ final class SingleNodeStreamer {
                     }
                 }
 
+                // get flow vars and prepare inputs
                 final FlowObjectStack[] flowObjectStacks = new FlowObjectStack[m_upStreamCaches.length];
                 for (int i = 0; i < m_upStreamCaches.length; i++) {
                     final ConnectionContainer inCC = parent.getIncomingConnectionFor(m_nnc.getID(), i);
@@ -175,7 +174,18 @@ final class SingleNodeStreamer {
                     flowObjectStacks[i] = stack;
                 }
 
-               final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
+                // get specs
+                // IMPORTANT NOTE: 'getPortInput' needs be called before 'getPortObjectSpec'
+                // otherwise, e.g., the column domains might not be properly set in the spec(s)
+                final PortObjectSpec[] inSpecs = new PortObjectSpec[m_upStreamCaches.length];
+                for (int i = 0; i < m_upStreamCaches.length; i++) {
+                    if (m_upStreamCaches[i].isInactive()) {
+                        inSpecs[i] = InactiveBranchPortObjectSpec.INSTANCE;
+                    } else {
+                        inSpecs[i] = m_upStreamCaches[i].getPortObjectSpec();
+                    }
+                }
+                final PortObjectSpec[] inSpecsNoFlowPort = ArrayUtils.remove(inSpecs, 0);
 
                 // can be null
                 MergeOperator mergeOperator = nM.createMergeOperator();
