@@ -200,6 +200,26 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         }
     }
 
+    /** Initializes the file store handler of the component output node and make all nodes in the component write to it.
+     * The output node will "own" all file stores created in this streamed component.
+     * {@inheritDoc}
+     */
+    @Override
+    protected void beforeExecute() {
+        //guaranteed because this executor can only be selected on components
+        //see SimpleStreamerNodeExecutionJobManager.canExecute(...)
+        SubNodeContainer snc = (SubNodeContainer)getNodeContainer();
+        NativeNodeContainer outNode =
+            (NativeNodeContainer)snc.getWorkflowManager().getNodeContainer(snc.getVirtualOutNodeID());
+        outNode.initLocalFileStoreHandler();
+        for (NodeContainer nc : snc.getNodeContainers()) {
+            if (nc != outNode) {
+                NativeNodeContainer nnc = (NativeNodeContainer)nc;
+                nnc.initFileStoreHandlerReference(outNode);
+            }
+        }
+    }
+
     /** {@inheritDoc} */
     @Override
     protected NodeContainerExecutionStatus mainExecute() {

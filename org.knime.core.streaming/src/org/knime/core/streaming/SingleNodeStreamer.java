@@ -118,6 +118,7 @@ final class SingleNodeStreamer {
         m_nnc = CheckUtils.checkArgumentNotNull(nnc, "Arg must not be null");
         m_outputCaches = CheckUtils.checkArgumentNotNull(outputCaches, "Arg must not be null");
         m_upStreamCaches = CheckUtils.checkArgumentNotNull(upStreamCaches, "Arg must not be null");
+        m_nnc.getNode().openFileStoreHandler(m_execContext);
     }
 
     Callable<NativeNodeContainerExecutionResult> newCallable() {
@@ -305,7 +306,6 @@ final class SingleNodeStreamer {
 
 
                 strop.loadInternals(streamInternals);
-                m_nnc.getNode().openFileStoreHandler(m_execContext);
                 try {
                     strop.runFinal(ArrayUtils.remove(inputs, 0), distrOutputs,
                         m_execContext.createSubExecutionContext(0.0));
