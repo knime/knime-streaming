@@ -127,11 +127,11 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
     public void setInactive() {
         m_lock.lock();
         try {
+            m_isInactive = true;
             m_portObjectSpecNotSetCondition.signalAll();
         } finally {
             m_lock.unlock();
         }
-        m_isInactive = true;
     }
 
     /**
@@ -147,7 +147,7 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
      *
      * @return inactive status
      */
-    public boolean isInactive() {
+    public final boolean isInactive() {
         return m_isInactive;
     }
 

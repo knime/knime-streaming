@@ -423,7 +423,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                     "Components must only contain native nodes in order to be streamed: " + nc.getNameWithID());
             } else if (nc.getNodeContainerState().isExecuted()) {
                 throwWrappedNodeExecutionStatusException(String.format(
-                    "Component must not contain executed" + " nodes in order to be streamed (\"%s\" is executed)",
+                    "Component must not contain executed nodes in order to be streamed (\"%s\" is executed)",
                     nc.getNameWithID()));
             } else if (nc instanceof NativeNodeContainer) {
                 NativeNodeContainer nnc = (NativeNodeContainer)nc;

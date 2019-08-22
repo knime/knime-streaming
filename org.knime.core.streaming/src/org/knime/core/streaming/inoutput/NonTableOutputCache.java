@@ -140,7 +140,6 @@ public final class NonTableOutputCache extends AbstractOutputCache<PortObjectSpe
         CheckUtils.checkState(!role.isDistributable(), "Non-table port can't be distributed");
         PortObject portObject = getPortObject();
         if (portObject == null) {
-            //should only be the case if inactive
             assert isInactive();
             return new PortObjectInput(InactiveBranchPortObject.INSTANCE);
         } else {

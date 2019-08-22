@@ -186,7 +186,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         try {
             if (role.isStreamable()) {
                 if (m_isDiamondSource) { // don't stream to avoid deadlocks
-                    PortObject stagedTable = waitForStagedTable();
+                    PortObject stagedTable = waitForStagedTable(); // might be InactiveBranchPortObject
                     if (stagedTable instanceof BufferedDataTable) {
                         return new StagedTableRowInput((BufferedDataTable)stagedTable, cc);
                     } else {
@@ -233,10 +233,10 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      */
     @Override
     public void setInactive() {
-        super.setInactive();
         final ReentrantLock lock = getLock();
         lock.lock();
         try {
+            super.setInactive();
             m_requireConsumeCondition.signalAll();
             m_requireFullDataConsumeCondition.signalAll();
             m_requirePrepareCondition.signalAll();
@@ -285,7 +285,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
             }
             final DataTableSpec dts = getPortObjectSpecNoWait();
             CheckUtils.checkState(dts != null, "Spec not expected to be null at this point");
-           return m_stagedDataTable != null ? m_stagedDataTable : m_context.createVoidTable(dts);
+            return m_stagedDataTable != null ? m_stagedDataTable : m_context.createVoidTable(dts);
         } finally {
             lock.unlock();
         }

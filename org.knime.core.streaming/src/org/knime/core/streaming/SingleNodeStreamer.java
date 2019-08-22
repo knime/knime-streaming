@@ -118,7 +118,7 @@ final class SingleNodeStreamer {
         m_nnc = CheckUtils.checkArgumentNotNull(nnc, "Arg must not be null");
         m_outputCaches = CheckUtils.checkArgumentNotNull(outputCaches, "Arg must not be null");
         m_upStreamCaches = CheckUtils.checkArgumentNotNull(upStreamCaches, "Arg must not be null");
-   }
+    }
 
     Callable<NativeNodeContainerExecutionResult> newCallable() {
         return new SingleNodeStreamerCallable();
