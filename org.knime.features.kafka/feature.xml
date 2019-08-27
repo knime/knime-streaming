@@ -2,7 +2,7 @@
 <feature
       id="org.knime.features.kafka"
       label="KNIME Extension for Apache Kafka (Preview)"
-      version="4.0.0.qualifier"
+      version="4.1.0.qualifier"
       provider-name="KNIME AG, Zurich, Switzerland">
 
    <description url="http://www.knime.com">
@@ -739,6 +739,6 @@ propagated with or for interoperation with KNIME.
          download-size="0"
          install-size="0"
          version="0.0.0"
-		 unpack="false"/>
+         unpack="false"/>
 
 </feature>
