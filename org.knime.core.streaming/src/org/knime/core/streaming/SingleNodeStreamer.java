@@ -351,8 +351,7 @@ final class SingleNodeStreamer {
                     LOGGER.warn(e.getMessage(), e);
                     r.setMessage(NodeMessage.newWarning(e.getMessage()));
                 } else {
-                    String error = "(" + e.getClass().getSimpleName() + "): " + e.getMessage();
-                    LOGGER.error(error, e);
+                    LOGGER.error(e.getMessage(), e);
                     r.setMessage(NodeMessage.newError(e.getMessage()));
                 }
                 r.setSuccess(false);
