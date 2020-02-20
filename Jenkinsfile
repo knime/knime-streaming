@@ -6,14 +6,8 @@ library "knime-pipeline@$BN"
 properties([
 	// provide a list of upstream jobs which should trigger a rebuild of this job
 	pipelineTriggers([
-		upstream('knime-core/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
 		upstream('knime-base/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
-		upstream('knime-shared/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
-		upstream('knime-tp/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
-		upstream('knime-workbench/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
 		upstream('knime-json/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
-		upstream('knime-javasnippet/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
-		upstream('knime-expressions/' + env.BRANCH_NAME.replaceAll('/', '%2F')),
 	]),
 	buildDiscarder(logRotator(numToKeepStr: '5')),
 	disableConcurrentBuilds()
