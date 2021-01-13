@@ -246,6 +246,11 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             ExecutionContextCreator execCreator = new ExecutionContextCreator(origWFM, runWFM.getID());
             NodeContainerExecutionResult execResult = mainExecuteInternal(runContainer, execCreator);
             origContainer.loadExecutionResult(execResult, new ExecutionMonitor(), new LoadResult("Stream-Exec-Result"));
+            if (!execResult.isSuccess()) {
+                removeInProgressFlagForAllConnections(runWFM);
+            }
+            // else: in case of a successful execution the inProgress-flags are removed automatically via
+            // InMemoryRowInput.close
             return execResult;
         } catch (CanceledExecutionException | InterruptedException e1) {
             origContainer.setNodeMessage(NodeMessage.newWarning("Canceled"));
@@ -381,6 +386,24 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         execResult.setMessage(message);
 
         return execResult;
+    }
+
+    /*
+     * Removes the inProgress flag for all connections but retains the connection message.
+     */
+    private static void removeInProgressFlagForAllConnections(final WorkflowManager wfm) {
+        for (NodeContainer nc : wfm.getNodeContainers()) {
+            for (int op = 0; op < nc.getNrOutPorts(); op++) {
+                Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
+                for (ConnectionContainer cc : ccs) {
+                    ConnectionProgress cp = cc.getConnectionProgress().orElse(null);
+                    // set in-progress to false but keep the progress message
+                    ConnectionProgress newCp =
+                        new ConnectionProgress(false, (cp != null && cp.hasMessage()) ? cp.getMessage() : "");
+                    cc.progressChanged(new ConnectionProgressEvent(cc, newCp));
+                }
+            }
+        }
     }
 
     /**
