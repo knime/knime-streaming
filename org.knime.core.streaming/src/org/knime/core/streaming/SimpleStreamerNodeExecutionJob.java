@@ -240,17 +240,13 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         final SandboxedNodeCreator sandBoxCreator = new SandboxedNodeCreator(origContainer, getPortObjects(),
             getStreamParentWFM()).setCopyData(false).setForwardConnectionProgressEvents(true);
 
+        NodeContainerExecutionResult execResult = null;
         try (final SandboxedNode sandboxedNode = sandBoxCreator.createSandbox(new ExecutionMonitor())) {
             final SubNodeContainer runContainer = sandboxedNode.getSandboxNode(SubNodeContainer.class);
             final WorkflowManager runWFM = runContainer.getWorkflowManager();
             ExecutionContextCreator execCreator = new ExecutionContextCreator(origWFM, runWFM.getID());
-            NodeContainerExecutionResult execResult = mainExecuteInternal(runContainer, execCreator);
+            execResult = mainExecuteInternal(runContainer, execCreator);
             origContainer.loadExecutionResult(execResult, new ExecutionMonitor(), new LoadResult("Stream-Exec-Result"));
-            if (!execResult.isSuccess()) {
-                removeInProgressFlagForAllConnections(runWFM);
-            }
-            // else: in case of a successful execution the inProgress-flags are removed automatically via
-            // InMemoryRowInput.close
             return execResult;
         } catch (CanceledExecutionException | InterruptedException e1) {
             origContainer.setNodeMessage(NodeMessage.newWarning("Canceled"));
@@ -264,6 +260,12 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             origContainer.setNodeMessage(NodeMessage.newError(e.getMessage()));
             return e.getStatus();
         } finally {
+            if (execResult == null || !execResult.isSuccess()) {
+                removeInProgressFlagForAllConnections(origWFM);
+            }
+            // else: in case of a successful execution the inProgress-flags are removed automatically via
+            // InMemoryRowInput.close
+
             m_mainThread = null;
         }
     }
