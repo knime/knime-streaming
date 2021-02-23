@@ -187,7 +187,7 @@ public final class SettingsModelKafka extends SettingsModel {
     protected void validateSettingsForModel(final NodeSettingsRO settings) throws InvalidSettingsException {
         // save since we use the same schema to save the rows
         @SuppressWarnings("unchecked")
-        final Enumeration<ConfigStringEntry> rows = settings.getNodeSettings(getConfigName()).children();
+        final Enumeration<ConfigStringEntry> rows = (Enumeration<ConfigStringEntry>)settings.getNodeSettings(getConfigName()).children();
         while (rows.hasMoreElements()) {
             final ConfigStringEntry row = rows.nextElement();
             m_model.validate(new String[]{row.getKey(), row.getString()});
@@ -204,7 +204,7 @@ public final class SettingsModelKafka extends SettingsModel {
         // save since we use the same schema to save the rows
         if (settings.containsKey(getConfigName())) {
             @SuppressWarnings("unchecked")
-            final Enumeration<ConfigStringEntry> rows = settings.getNodeSettings(getConfigName()).children();
+            final Enumeration<ConfigStringEntry> rows = (Enumeration<ConfigStringEntry>)settings.getNodeSettings(getConfigName()).children();
             while (rows.hasMoreElements()) {
                 final ConfigStringEntry row = rows.nextElement();
                 m_model.addRow(new String[]{row.getKey(), row.getString()});

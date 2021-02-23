@@ -167,7 +167,7 @@ public final class KafkaConnectorPortSpec extends AbstractSimplePortObjectSpec {
         m_connectionProps = new Properties();
         // save since we use the same schema to save the properties
         @SuppressWarnings("unchecked")
-        Enumeration<ConfigStringEntry> entries = model.children();
+        Enumeration<ConfigStringEntry> entries = (Enumeration<ConfigStringEntry>)model.children();
         while (entries.hasMoreElements()) {
             final ConfigStringEntry entry = entries.nextElement();
             m_connectionProps.put(entry.getKey(), entry.getString());
