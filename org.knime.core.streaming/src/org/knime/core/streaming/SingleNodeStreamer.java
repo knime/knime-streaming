@@ -125,17 +125,15 @@ final class SingleNodeStreamer {
         return new SingleNodeStreamerCallable();
     }
 
-    static void updateThreadName(final String nameSuffix) {
-        String name = Thread.currentThread().getName();
-        name = name.replaceAll("^(Streaming-\\d+).*", "$1-" + nameSuffix);
-        Thread.currentThread().setName(name);
+    static String getThreadName(final String nameSuffix) {
+        return Thread.currentThread().getName().replaceAll("^(Streaming-\\d+).*", "$1-" + nameSuffix);
     }
 
     final class SingleNodeStreamerCallable implements Callable<NativeNodeContainerExecutionResult> {
 
         @Override
         public NativeNodeContainerExecutionResult call() {
-            updateThreadName(m_nnc.getNameWithID());
+            Thread.currentThread().setName(getThreadName(m_nnc.getNameWithID()));
             NodeContext.pushContext(m_nnc);
             final PortInput[] inputs = new PortInput[m_upStreamCaches.length];
             final PortOutput[] outputs = new PortOutput[m_outputCaches.length];
@@ -358,7 +356,7 @@ final class SingleNodeStreamer {
                 return r;
             } finally {
                 NodeContext.removeLastContext();
-                updateThreadName("IDLE");
+                Thread.currentThread().setName(getThreadName("IDLE"));
             }
         }
 

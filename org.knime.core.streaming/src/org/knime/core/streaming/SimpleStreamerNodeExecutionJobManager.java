@@ -61,7 +61,6 @@ import org.knime.core.node.workflow.AbstractNodeExecutionJobManager;
 import org.knime.core.node.workflow.NativeNodeContainer;
 import org.knime.core.node.workflow.NodeContainer;
 import org.knime.core.node.workflow.NodeContainer.NodeContainerSettings.SplitType;
-import org.knime.core.node.workflow.NodeContext;
 import org.knime.core.node.workflow.NodeExecutionJob;
 import org.knime.core.node.workflow.NodeExecutionJobManagerPanel;
 import org.knime.core.node.workflow.SubNodeContainer;
@@ -85,19 +84,7 @@ public class SimpleStreamerNodeExecutionJobManager extends AbstractNodeExecution
     @Override
     public NodeExecutionJob submitJob(final NodeContainer nc, final PortObject[] data) {
         final SimpleStreamerNodeExecutionJob job = new SimpleStreamerNodeExecutionJob(nc, data, m_settings);
-        SimpleStreamerNodeExecutionJob.STREAMING_EXECUTOR_SERVICE.execute(new Runnable() {
-            @Override
-            public void run() {
-                SingleNodeStreamer.updateThreadName("Master");
-                NodeContext.pushContext(nc);
-                try {
-                    job.run();
-                } finally {
-                    NodeContext.removeLastContext();
-                    SingleNodeStreamer.updateThreadName("IDLE");
-                }
-            }
-        });
+        SimpleStreamerNodeExecutionJob.STREAMING_EXECUTOR_SERVICE.execute(job);
         return job;
     }
 

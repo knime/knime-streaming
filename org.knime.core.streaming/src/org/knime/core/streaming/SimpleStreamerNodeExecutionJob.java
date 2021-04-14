@@ -63,8 +63,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
@@ -113,6 +113,7 @@ import org.knime.core.streaming.inoutput.NonTableOutputCache;
 import org.knime.core.streaming.inoutput.NullOutputCache;
 import org.knime.core.util.LockFailedException;
 import org.knime.core.util.Pair;
+import org.knime.core.util.ThreadUtils;
 
 /**
  * Job that streams a {@link SubNodeContainer}. Only streaming, no parallelization.
@@ -134,15 +135,17 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
      * result is copied back into the original sub-node. This instance is created lazy. */
     private static WorkflowManager streamParentWFM;
 
-    static final ExecutorService STREAMING_EXECUTOR_SERVICE = Executors.newCachedThreadPool(new ThreadFactory() {
+    static final Executor STREAMING_EXECUTOR_SERVICE =
+        ThreadUtils.executorWithContext(Executors.newCachedThreadPool(new ThreadFactory() {
             final AtomicInteger THREAD_ID = new AtomicInteger();
-        @Override
-        public Thread newThread(final Runnable r) {
-            Thread t = new Thread(r, "Streaming-" + THREAD_ID.getAndIncrement() + "-IDLE");
-            t.setUncaughtExceptionHandler(UNCAUGHT_EXCEPTION_HANDLER);
-            return t;
-        }
-    });
+
+            @Override
+            public Thread newThread(final Runnable r) {
+                Thread t = new Thread(r, "Streaming-" + THREAD_ID.getAndIncrement() + "-IDLE");
+                t.setUncaughtExceptionHandler(UNCAUGHT_EXCEPTION_HANDLER);
+                return t;
+            }
+        }));
 
     private static final PortObject[] EMPTY_PO_ARRAY = new PortObject[0];
 
@@ -568,6 +571,11 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             return true;
         }
         return false;
+    }
+
+    @Override
+    protected String getCustomThreadName(final String originalThreadName) {
+        return SingleNodeStreamer.getThreadName("Master");
     }
 
     static final class WrappedNodeExecutionStatusException extends Exception {
