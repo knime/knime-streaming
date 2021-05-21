@@ -89,6 +89,7 @@ import org.knime.core.node.workflow.NodeMessage;
 import org.knime.core.node.workflow.WorkflowLock;
 import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResult;
+import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResult.NativeNodeContainerExecutionResultBuilder;
 import org.knime.core.node.workflow.execresult.NodeExecutionResult;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
@@ -172,13 +173,14 @@ final class SingleNodeStreamer {
                 }
                 if (isInactive) {
                     if (!(nM instanceof InactiveBranchConsumer)) {
-                        Arrays.stream(m_outputCaches).forEach(c -> c.setInactive());
+                        Arrays.stream(m_outputCaches).forEach(AbstractOutputCache::setInactive);
 
                         //early abort
-                        NativeNodeContainerExecutionResult executionResult =
-                            m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0));
-                        executionResult.setSuccess(true);
-                        return executionResult;
+                        return NativeNodeContainerExecutionResult
+                            .builder(m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0))) //
+                            .setSuccess(true) //
+                            .build();
+
                     }
                 }
 
@@ -320,13 +322,13 @@ final class SingleNodeStreamer {
                     c -> c.getPortObjectMock()).toArray(PortObject[]::new);
                 m_nnc.getNode().assignInternalHeldObjects(rawInput, null, m_execContext, rawOutput);
                 m_execContext.setMessage("Creating execution result");
-                NativeNodeContainerExecutionResult executionResult =
-                        m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0));
-                executionResult.setSuccess(true);
-                return executionResult;
+                return NativeNodeContainerExecutionResult //
+                    .builder(m_nnc.createExecutionResult(m_execContext.createSubProgress(0.0)))//
+                    .setSuccess(true) //
+                    .build();
             } catch (Exception e) {
-                NativeNodeContainerExecutionResult r = new NativeNodeContainerExecutionResult();
-                r.setNodeExecutionResult(new NodeExecutionResult());
+                NativeNodeContainerExecutionResultBuilder r = NativeNodeContainerExecutionResult.builder();
+                r.setNodeExecutionResult(NodeExecutionResult.builder().build());
                 if (e instanceof InterruptedException) {
                     // downstream error - ignore here
                     LOGGER.debugWithFormat("interrupt received for \"%s\"- canceling streaming execution",
@@ -339,7 +341,7 @@ final class SingleNodeStreamer {
                     r.setMessage(NodeMessage.newError(e.getMessage()));
                 }
                 r.setSuccess(false);
-                return r;
+                return r.build();
             } finally {
                 NodeContext.removeLastContext();
                 Thread.currentThread().setName(getThreadName("IDLE"));

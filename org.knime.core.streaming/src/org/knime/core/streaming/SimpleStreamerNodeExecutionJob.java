@@ -102,11 +102,16 @@ import org.knime.core.node.workflow.WorkflowEvent;
 import org.knime.core.node.workflow.WorkflowManager;
 import org.knime.core.node.workflow.WorkflowPersistor.LoadResult;
 import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResult;
+import org.knime.core.node.workflow.execresult.NativeNodeContainerExecutionResult.NativeNodeContainerExecutionResultBuilder;
 import org.knime.core.node.workflow.execresult.NodeContainerExecutionResult;
+import org.knime.core.node.workflow.execresult.NodeContainerExecutionResult.NodeContainerExecutionResultBuilder;
 import org.knime.core.node.workflow.execresult.NodeContainerExecutionStatus;
 import org.knime.core.node.workflow.execresult.NodeExecutionResult;
+import org.knime.core.node.workflow.execresult.NodeExecutionResult.NodeExecutionResultBuilder;
 import org.knime.core.node.workflow.execresult.SubnodeContainerExecutionResult;
+import org.knime.core.node.workflow.execresult.SubnodeContainerExecutionResult.SubnodeContainerExecutionResultBuilder;
 import org.knime.core.node.workflow.execresult.WorkflowExecutionResult;
+import org.knime.core.node.workflow.execresult.WorkflowExecutionResult.WorkflowExecutionResultBuilder;
 import org.knime.core.streaming.inoutput.AbstractOutputCache;
 import org.knime.core.streaming.inoutput.InMemoryRowCache;
 import org.knime.core.streaming.inoutput.NonTableOutputCache;
@@ -316,22 +321,23 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             }
         }
 
-        WorkflowExecutionResult wfmExecResult = new WorkflowExecutionResult(wfm.getID());
+        final Map<NodeID, NodeContainerExecutionResultBuilder> childResultMap = new LinkedHashMap<>();
         for (Pair<NodeContainer, Future<NativeNodeContainerExecutionResult>> nodeFuture : nodeThreadList) {
-            NodeContainer innerNC = nodeFuture.getFirst();
             Future<NativeNodeContainerExecutionResult> future = nodeFuture.getSecond();
-            NativeNodeContainerExecutionResult innerExecResult = new NativeNodeContainerExecutionResult();
             if ((isFailed || isCanceled) && !future.isDone()) {
                 future.cancel(true);
                 continue;
                 // assert future.isDone() -- according to API
             }
+            NodeContainer innerNC = nodeFuture.getFirst();
+            NativeNodeContainerExecutionResultBuilder innerExecResBuilder = NativeNodeContainerExecutionResult.builder();
             try {
                 if (innerNC instanceof NativeNodeContainer) {
-                    innerExecResult = future.get();
-                    NativeNodeContainerExecutionResult nncExecResult = innerExecResult;
-                    NodeExecutionResult nodeExecResult = nncExecResult.getNodeExecutionResult();
-                    if (innerExecResult.isSuccess()) {
+                    final NativeNodeContainerExecutionResult nncExecResult = future.get();
+                    innerExecResBuilder = NativeNodeContainerExecutionResult.builder(nncExecResult);
+                    NodeExecutionResultBuilder innerNodeExecResBuilder =
+                            NodeExecutionResult.builder(nncExecResult.getNodeExecutionResult());
+                    if (nncExecResult.isSuccess()) {
                         PortObjectSpec[] outSpecs = new PortObjectSpec[innerNC.getNrOutPorts()];
                         PortObject[] outObjects = new PortObject[outSpecs.length];
                         for (int o = 0; o < outSpecs.length; o++) {
@@ -345,41 +351,44 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                                 outObjects[o] = outputCache.getPortObjectMock();
                             }
                         }
-                        nodeExecResult.setPortObjectSpecs(outSpecs);
-                        nodeExecResult.setPortObjects(outObjects);
+                        innerNodeExecResBuilder.setPortObjectSpecs(outSpecs);
+                        innerNodeExecResBuilder.setPortObjects(outObjects);
                     } else {
                         failMessage = innerNC.getName() + " failed";
-                        if (innerExecResult.getNodeMessage().getMessageType().equals(NodeMessage.Type.ERROR)) {
-                            failMessage = failMessage.concat(": " + innerExecResult.getNodeMessage().getMessage());
+                        if (nncExecResult.getNodeMessage().getMessageType() == NodeMessage.Type.ERROR) {
+                            failMessage = failMessage.concat(": " + nncExecResult.getNodeMessage().getMessage());
                         }
                     }
+                    innerExecResBuilder.setNodeExecutionResult(innerNodeExecResBuilder.build());
                 } else {
                     assert false : innerNC.getClass().getSimpleName() + " does not support streaming";
                 }
             } catch (InterruptedException e) {
                 assert false : "InterruptedException not expected as future is canceled";
                 isCanceled = true;
-                innerExecResult.setSuccess(false);
+                innerExecResBuilder.setSuccess(false);
             } catch (ExecutionException e) {
                 isFailed = true;
                 failMessage = innerNC.getNameWithID() + " failed: " + e.getMessage();
-                innerExecResult.setSuccess(false);
+                innerExecResBuilder.setSuccess(false);
                 NodeMessage innerMessage = new NodeMessage(Type.ERROR, e.getMessage());
                 innerNC.setNodeMessage(innerMessage);
-                innerExecResult.setMessage(innerMessage);
+                innerExecResBuilder.setMessage(innerMessage);
                 LOGGER.error("Streaming thread to " + innerNC.getNameWithID() + " failed: " + e.getMessage(), e);
             }
-            wfmExecResult.addNodeExecutionResult(innerNC.getID(), innerExecResult);
+            childResultMap.put(innerNC.getID(), innerExecResBuilder);
         }
         final boolean success = !(isFailed || isCanceled);
         if (!success) {
             // don't allow partial success - otherwise the user can re-run with half way executed flow but
             // the green nodes have no output table in their output
-            wfmExecResult.getExecutionResultMap().values().stream().forEach(e -> e.setSuccess(false));
+            childResultMap.values().stream().forEach(e -> e.setSuccess(false));
         }
-        wfmExecResult.setSuccess(success);
-        SubnodeContainerExecutionResult execResult = new SubnodeContainerExecutionResult(runContainer.getID());
-        execResult.setWorkflowExecutionResult(wfmExecResult);
+        WorkflowExecutionResultBuilder wfmExecResultB = WorkflowExecutionResult.builder(wfm.getID());
+        wfmExecResultB.setSuccess(success);
+        childResultMap.entrySet().forEach(e -> wfmExecResultB.addNodeExecutionResult(e.getKey(), e.getValue().build()));
+        SubnodeContainerExecutionResultBuilder execResult = SubnodeContainerExecutionResult.builder(runContainer.getID());
+        execResult.setWorkflowExecutionResult(wfmExecResultB.build());
 
         NodeMessage message = NodeMessage.NONE;
         if (isFailed) {
@@ -390,7 +399,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         execResult.setSuccess(success);
         execResult.setMessage(message);
 
-        return execResult;
+        return execResult.build();
     }
 
     /*
