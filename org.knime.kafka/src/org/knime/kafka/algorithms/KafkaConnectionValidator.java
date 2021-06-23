@@ -121,9 +121,9 @@ public final class KafkaConnectionValidator {
         try (KafkaConsumer<Long, String> simpleConsumer = new KafkaConsumer<>(props)) {
             simpleConsumer.listTopics();
         } catch (final TimeoutException e) {
-            throw new InvalidSettingsException(exceptionMsg);
+            throw new InvalidSettingsException(exceptionMsg, e);
         } catch (final KafkaException e) {
-            throw new InvalidSettingsException(e.getMessage());
+            throw new InvalidSettingsException(e.getMessage(), e);
         }
     }
 

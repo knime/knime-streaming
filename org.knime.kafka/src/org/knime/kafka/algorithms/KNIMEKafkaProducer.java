@@ -223,9 +223,11 @@ public final class KNIMEKafkaProducer {
 
         // progress related counters
         long rowNo = 0;
-        long rowCnt = -1;
+        final long rowCnt;
         if (input instanceof DataTableRowInput) {
             rowCnt = ((DataTableRowInput)input).getRowCount();
+        } else {
+            rowCnt = -1;
         }
 
         // initialize the producer
@@ -246,13 +248,13 @@ public final class KNIMEKafkaProducer {
                 checkAsyncException();
                 // update progress
                 final String rowKey = row.getKey().toString();
-                final String msg;
                 ++rowNo;
+                final long rowNoFinal = rowNo;
                 if (rowCnt <= 0) {
-                    msg = "Writing row " + (rowNo) + " (\"" + rowKey + "\")";
+                    exec.setMessage(() -> "Writing row " + (rowNoFinal) + " (\"" + rowKey + "\")");
                 } else {
-                    msg = "Writing row " + (rowNo) + " (\"" + rowKey + "\") of " + rowCnt;
-                    exec.setProgress(rowNo / (double)rowCnt, msg);
+                    exec.setProgress(rowNoFinal / (double)rowCnt,
+                        () -> "Writing row " + (rowNoFinal) + " (\"" + rowKey + "\") of " + rowCnt);
                 }
 
                 // get the cell holding the message
