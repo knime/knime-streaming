@@ -271,7 +271,12 @@ final class SingleNodeStreamer {
                     for (int i = 0; i < outSpecsNoFlowPort.length; i++) {
                         final PortObjectSpec s = outSpecsNoFlowPort[i];
                         if (s != null) {
-                            m_outputCaches[i + 1].setPortObjectSpec(s);
+                            // AP-16977: setPortObjectSpec can't handle InactiveBranchPortObjectSpec
+                            if (s instanceof InactiveBranchPortObjectSpec) {
+                                m_outputCaches[i + 1].setInactive();
+                            } else {
+                                m_outputCaches[i + 1].setPortObjectSpec(s);
+                            }
                         }
                     }
                 }

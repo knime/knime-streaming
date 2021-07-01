@@ -329,7 +329,12 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
         try {
-            CheckUtils.checkState(getPortObjectSpec() != null,
+            // getPortObjectSpec may return null if setPortObjectSpec was never called - this is legit if an output port
+            // is inactive, in which case setInactive is called (instead of setPortObjectSpec) in order to wake up
+            // downstream nodes waiting for the port object spec to be set (m_portObjectSpecNotSetCondition.signalAll).
+            // However, if the port object spec is null, rows must be empty. This is the case when InMemoryRowOutput
+            // calls addChunk during its close method with isLast = true and an empty list of rows.
+            CheckUtils.checkState(getPortObjectSpec() != null || rows.isEmpty(),
                 "Can't add rows to output as no spec was set -- computeFinalSpec probably returned null");
             if (m_isLast) {
                 return false; // return value doesn't matter - but return value corresponds to the state of the consumer
