@@ -113,6 +113,10 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     private List<DataRow> m_currentChunk;
 
+    /**
+     * Indicates that the last chunk has been added, i.e., {@link #addChunk(List, boolean, boolean)} was called
+     * previously with isLast parameter set to true.
+     */
     private boolean m_isLast;
 
     private final int m_streamedConsumerCount;
@@ -313,7 +317,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      *
      * @param rows The rows to add, never null but possibly empty. Row count should not exceed {@link #CHUNK_SIZE}.
      * @param isLast If this chunk is the last chunk and no more rows are expected
-     * @param mayCloseOutput <code>true</code if this output and all others attached to the node may be closed in case
+     * @param mayCloseOutput <code>true</code> if this output and all others attached to the node may be closed in case
      *          there are no consumers waiting for further input
      * @return true if the producer can close the source because all streaming consumers are done (input closed)
      * @throws InterruptedException If interrupted while blocking.

@@ -56,6 +56,8 @@ import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.ExecutionContext;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.PortObjectSpec;
+import org.knime.core.node.port.inactive.InactiveBranchConsumer;
+import org.knime.core.node.port.inactive.InactiveBranchPortObjectSpec;
 import org.knime.core.node.streamable.InputPortRole;
 import org.knime.core.node.streamable.PortInput;
 import org.knime.core.node.streamable.PortOutput;
@@ -123,6 +125,9 @@ public abstract class AbstractOutputCache<SPEC extends PortObjectSpec> {
 
     /**
      * Sets this cache/port output to inactive.
+     *
+     * This is the case for instance if an upstream node outputs an {@link InactiveBranchPortObjectSpec} and the
+     * consumer node doesn't implement {@link InactiveBranchConsumer}. See SingleNodeStreamer#call.
      */
     public void setInactive() {
         m_lock.lock();

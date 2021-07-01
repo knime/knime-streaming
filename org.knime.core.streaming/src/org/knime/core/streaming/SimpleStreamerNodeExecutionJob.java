@@ -412,6 +412,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
     }
 
     /**
+     * For each node, create an {@link AbstractOutputCache} for each of its output ports.
      * @param wfm
      * @param allNodeContainers
      * @return
@@ -420,10 +421,12 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         final WorkflowManager wfm, final Collection<NodeContainer> allNodeContainers,
         final ExecutionContextCreator execCreator) throws WrappedNodeExecutionStatusException {
         Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches = new LinkedHashMap<>();
+        // for each node
         for (NodeContainer nc : allNodeContainers) {
             NativeNodeContainer nnc = (NativeNodeContainer)nc;
             final NodeContainerCacheHandle ncCacheHandle = new NodeContainerCacheHandle(nnc);
             final boolean isDiamondStart = isDiamondStart(wfm, nnc);
+            // iterate over output ports
             for (int op = 0; op < nc.getNrOutPorts(); op++) {
                 PortType portType = nc.getOutPort(op).getPortType();
                 final boolean isData = BufferedDataTable.TYPE.equals(portType)
@@ -431,6 +434,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                 int nrStreamedConsumers = 0;
                 boolean hasNonStreamableConsumer = false;
                 Set<ConnectionContainer> ccs = wfm.getOutgoingConnectionsFor(nc.getID(), op);
+                // for each downstream connection of this port: count the number of streamable consumers
                 for (ConnectionContainer cc : ccs) {
                     NodeID dest = cc.getDest();
                     int destPort = cc.getDestPort();
@@ -449,6 +453,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
                     ConnectionProgress p = new ConnectionProgress(nrStreamedConsumers > 0, isData ? "0" : "");
                     cc.progressChanged(new ConnectionProgressEvent(cc, p));
                 }
+                // create the output buffers
                 AbstractOutputCache<? extends PortObjectSpec> outputCache;
                 if (isData) {
                     ncCacheHandle.incrementTotalCacheCounter();
@@ -514,6 +519,20 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
         }
     }
 
+    /**
+     * For each {@link NodeContainer}, create a {@link SingleNodeStreamer} referencing the already created
+     * {@link AbstractOutputCache}s for a node's input ports output ports. The {@link AbstractOutputCache} for an input
+     * port is taken from the output port of the upstream node that connects to that port. If nothing is connected to an
+     * input port and that port is optional, reference the {@link NullOutputCache#INSTANCE}.
+     *
+     * @param wfm
+     * @param allNodeContainers
+     * @param connectionCaches already created {@link AbstractOutputCache} for each output port of each node.
+     * @param execCreator
+     * @return
+     * @throws WrappedNodeExecutionStatusException If component contains executed nodes or if a connection to a
+     *             non-optional input port is missing.
+     */
     private Map<NodeContainer, SingleNodeStreamer> createStreamers(final WorkflowManager wfm,
         final Collection<NodeContainer> allNodeContainers,
         final Map<NodeIDWithOutport, AbstractOutputCache<? extends PortObjectSpec>> connectionCaches,
@@ -530,12 +549,14 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             final int nrOuts = nnc.getNrOutPorts();
             final NodeID id = nnc.getID();
 
+            // output ports: look up the already created AbstractOutputCache instances
             AbstractOutputCache<? extends PortObjectSpec>[] outputCaches = new AbstractOutputCache[nrOuts];
             for (int i = 0; i < nrOuts; i++) {
                 outputCaches[i] = connectionCaches.get(new NodeIDWithOutport(id, i));
                 CheckUtils.checkState(outputCaches[i] != null, "No output cache for node %s, port %d", id, i);
             }
 
+            // input ports: look up the AbstractOutputCache instances related to the upstream node's output port
             AbstractOutputCache<? extends PortObjectSpec>[] upStreamCaches = new AbstractOutputCache[nrIns];
             for (int i = 0; i < upStreamCaches.length; i++) {
                 PortType inportType = nnc.getInPort(i).getPortType();
