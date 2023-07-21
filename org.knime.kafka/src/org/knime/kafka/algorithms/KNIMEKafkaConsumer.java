@@ -201,7 +201,7 @@ public final class KNIMEKafkaConsumer {
     private final ZoneId m_zoneId;
 
     /** The KafkaConsumer . */
-    private KafkaConsumer<Long, String> m_consumer;
+    private KafkaConsumer<String, String> m_consumer;
 
     /**
      * Constructor.
@@ -468,14 +468,14 @@ public final class KNIMEKafkaConsumer {
             exec.checkCanceled();
 
             // poll the messages
-            final ConsumerRecords<Long, String> consumerRecords = m_consumer.poll(m_pollTimeout);
+            final ConsumerRecords<String, String> consumerRecords = m_consumer.poll(m_pollTimeout);
             //            setEndOffsets(consumerRecords.partitions());
             // push all messages to the output table
             if (consumerRecords.count() > 0) {
                 Iterator<TopicPartition> partIter = consumerRecords.partitions().iterator();
                 while (!done && partIter.hasNext()) {
                     final TopicPartition msgPartition = partIter.next();
-                    for (ConsumerRecord<Long, String> record : consumerRecords.records(msgPartition)) {
+                    for (ConsumerRecord<String, String> record : consumerRecords.records(msgPartition)) {
                         if (m_breakCond == BreakCondition.TIME && record.timestamp() > m_time) {
                             m_consumer.pause(Collections.singleton(msgPartition));
                             break;
@@ -542,7 +542,7 @@ public final class KNIMEKafkaConsumer {
      *
      * @return the {@link KafkaConsumer}
      */
-    private KafkaConsumer<Long, String> initConsumer(final Map<TopicPartition, OffsetAndMetadata> offsetMap)
+    private KafkaConsumer<String, String> initConsumer(final Map<TopicPartition, OffsetAndMetadata> offsetMap)
         throws InvalidSettingsException {
         if (m_consumer != null) {
             return m_consumer;
@@ -582,7 +582,7 @@ public final class KNIMEKafkaConsumer {
      * @return the message represented by a {@link StringCell} or {@link JSONCell}
      * @throws IOException - if an error occurred while converting to JSON
      */
-    private DataRow convert(final ConsumerRecord<Long, String> record) throws IOException {
+    private DataRow convert(final ConsumerRecord<String, String> record) throws IOException {
         DataCell msgCell;
         if (m_convertToJSON) {
             msgCell = JSONCellFactory.create(record.value(), true);

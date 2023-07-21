@@ -100,7 +100,7 @@ public final class KNIMEKafkaProducer {
     private final int m_conValTimeout;
 
     /** The kafkaProducer. */
-    private KafkaProducer<Long, String> m_producer;
+    private KafkaProducer<String, String> m_producer;
 
     /** <code>True</code> if the producer is executed in transaction mode. */
     private final boolean m_transactionMode;
@@ -265,7 +265,7 @@ public final class KNIMEKafkaProducer {
                 final String message = ((StringValue)cell).getStringValue();
                 // send the message to all topics
                 for (final String topic : m_topic) {
-                    final ProducerRecord<Long, String> record = new ProducerRecord<>(topic, message);
+                    final ProducerRecord<String, String> record = new ProducerRecord<>(topic, message);
                     sendRecord(record);
                 }
                 if (m_transactionMode && m_commitInterval > 0 && ++numSendRec == m_commitInterval) {
@@ -303,7 +303,7 @@ public final class KNIMEKafkaProducer {
         }
     }
 
-    private void sendRecord(final ProducerRecord<Long, String> record)
+    private void sendRecord(final ProducerRecord<String, String> record)
         throws InterruptedException, ExecutionException {
         switch (m_sendingType) {
             case ASYNCHRONOUS:
