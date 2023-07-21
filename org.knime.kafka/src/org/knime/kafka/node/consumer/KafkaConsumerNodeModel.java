@@ -123,6 +123,7 @@ final class KafkaConsumerNodeModel extends NodeModel {
         KNIMEKafkaConsumer consumer = null;
         consumer = getConsumer(port.getConnectionProperties(), m_consumerSettings.getProperties(),
             port.getConnectionValidationTimeout());
+        exec.setMessage("Reading messages...");
         try {
             // execute the consumer
             return new PortObject[]{consumer.execute(exec)};
