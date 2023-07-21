@@ -21,6 +21,7 @@
 	</properties>
 
 	<modules>
+		<module>org.knime.kafka/lib/fetch_jars</module>
 		<module>org.knime.core.streaming</module>
 		<module>org.knime.kafka</module>
 		<module>org.knime.features.core.streaming</module>
