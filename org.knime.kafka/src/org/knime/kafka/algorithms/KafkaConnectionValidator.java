@@ -54,7 +54,6 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.TimeoutException;
-import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.knime.core.node.InvalidSettingsException;
 
@@ -116,9 +115,9 @@ public final class KafkaConnectionValidator {
         props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, requestTimeout - 1);
         props.put(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG, requestTimeout);
         props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 300);
-        props.put("key.deserializer", LongDeserializer.class.getName());
-        props.put("value.deserializer", StringDeserializer.class.getName());
-        try (KafkaConsumer<Long, String> simpleConsumer = new KafkaConsumer<>(props)) {
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        try (KafkaConsumer<String, String> simpleConsumer = new KafkaConsumer<>(props)) {
             simpleConsumer.listTopics();
         } catch (final TimeoutException e) {
             throw new InvalidSettingsException(exceptionMsg, e);
