@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.knime.kafka</groupId>
     <artifactId>kafka-fetch-jars</artifactId>
-    <version>4.7.0</version>
+    <version>4.7.6</version>
     <packaging>pom</packaging>
 
     <name>Jar fetcher for kafka plugin</name>
