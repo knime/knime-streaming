@@ -52,7 +52,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Properties;
 
-import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.errors.InvalidConfigurationException;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.node.BufferedDataTable;
@@ -127,10 +126,6 @@ final class KafkaConsumerNodeModel extends NodeModel {
         try {
             // execute the consumer
             return new PortObject[]{consumer.execute(exec)};
-        } catch (final KafkaException e) {
-            throw new Exception(e.getCause());
-        } catch (final Exception e) {
-            throw (e);
         } finally {
             // ensure that the consumer is closed
             consumer.close();
@@ -155,10 +150,6 @@ final class KafkaConsumerNodeModel extends NodeModel {
                 try {
                     // execute the consumer
                     consumer.execute(exec, (RowOutput)outputs[0]);
-                } catch (final KafkaException e) {
-                    throw new Exception(e.getCause());
-                } catch (final Exception e) {
-                    throw (e);
                 } finally {
                     // ensure that the consumer is closed
                     consumer.close();
