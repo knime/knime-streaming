@@ -32,7 +32,7 @@
       <portType
             color="#42b0f4"
             hidden="false"
-            name="KafkaConnection"
+            name="Kafka Connection"
             objectClass="org.knime.kafka.port.KafkaConnectorPortObject"
             objectSerializer="org.knime.kafka.port.KafkaConnectorPortObject$Serializer"
             specClass="org.knime.kafka.port.KafkaConnectorPortSpec"
