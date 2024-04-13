@@ -216,8 +216,7 @@ public final class SimpleStreamerNodeExecutionJob extends NodeExecutionJob {
             (NativeNodeContainer)snc.getWorkflowManager().getNodeContainer(snc.getVirtualOutNodeID());
         outNode.initLocalFileStoreHandler();
         for (NodeContainer nc : snc.getNodeContainers()) {
-            if (nc != outNode && nc instanceof NativeNodeContainer) {
-                NativeNodeContainer nnc = (NativeNodeContainer)nc;
+            if (nc != outNode && nc instanceof NativeNodeContainer nnc) {
                 nnc.initFileStoreHandlerReference(outNode);
             }
         }
