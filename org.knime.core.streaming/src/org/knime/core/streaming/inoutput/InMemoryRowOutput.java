@@ -48,12 +48,14 @@
  */
 package org.knime.core.streaming.inoutput;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.knime.core.data.DataRow;
+import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.v2.RowRead;
+import org.knime.core.data.v2.RowWrite;
+import org.knime.core.data.v2.WriteBatch;
 import org.knime.core.node.BufferedDataTable;
+import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.streamable.RowOutput;
 
 /**
@@ -64,51 +66,100 @@ import org.knime.core.node.streamable.RowOutput;
  */
 public final class InMemoryRowOutput extends RowOutput {
 
+    private final DataTableSpec m_spec;
+
     private final InMemoryRowCache m_rowCache;
-    private List<DataRow> m_rows;
+
+    private WriteBatch m_writeBatch;
+
+    private final int m_numColumns;
+
+    private DataRow m_row;
+
+    private final RowRead m_read;
 
     InMemoryRowOutput(final InMemoryRowCache rowCache) {
         m_rowCache = rowCache;
-        m_rows = new ArrayList<DataRow>(rowCache.getChunkSize());
+        m_spec = rowCache.getPortObjectSpecNoWait();
+        m_writeBatch = InMemoryRowCache.newStreamingWriteBatch(m_spec);
+        m_numColumns = rowCache.getPortObjectSpecNoWait().getNumColumns();
+        m_read = RowRead.suppliedBy(() -> m_row, m_numColumns);
     }
 
-    /** {@inheritDoc} */
+    @Override
+    public InterruptibleRowWriteCursor asWriteCursor(final DataTableSpec spec) {
+
+        return new InterruptibleRowWriteCursor() {
+
+            @Override
+            public RowWrite forward() {
+                if (m_writeBatch.size() == m_rowCache.getChunkSize()) {
+                    try {
+                        closeBatch(spec, false);
+                    } catch (final InterruptedException e) {
+                        throw ExceptionUtils.asRuntimeException(e);
+                    }
+                }
+                return m_writeBatch.forward();
+            }
+
+            @Override
+            public void close() {
+                try {
+                    closeBatch(spec, false);
+                } catch (final InterruptedException e) {
+                    throw ExceptionUtils.asRuntimeException(e);
+                }
+            }
+
+            @Override
+            public boolean canForward() {
+                return m_writeBatch.canForward();
+            }
+
+        };
+    }
+
     @Override
     public void push(final DataRow row) throws InterruptedException {
-        pushInternal(row, false);
-    }
-
-    private void pushInternal(final DataRow row, final boolean mayClose) throws InterruptedException {
-        m_rows.add(row);
-        if (m_rows.size() == m_rowCache.getChunkSize()) {
-            if (m_rowCache.addChunk(m_rows, false, mayClose)) {
-                assert mayClose : "Can't close output as flag is false";
-                throw new OutputClosedException();
-            }
-            m_rows = new ArrayList<>(m_rowCache.getChunkSize());
+        if (m_writeBatch.size() == m_rowCache.getChunkSize()) {
+            closeBatch(m_spec, false);
         }
+        final var write = m_writeBatch.forward();
+        m_row = row;
+        write.setFrom(m_read);
     }
 
-    /** {@inheritDoc} */
+    private void closeBatch(final DataTableSpec spec, final boolean mayClose) throws InterruptedException {
+        if (m_spec != spec) {
+            throw new IllegalStateException("Passed different spec to close batch than what output was created with");
+        }
+        if (m_rowCache.addChunk(m_writeBatch.finish(), false, mayClose)) {
+            assert mayClose : "Can't close output as flag is false";
+            throw new OutputClosedException();
+        }
+        m_writeBatch = InMemoryRowCache.newStreamingWriteBatch(spec);
+    }
+
     @Override
-    public void setFully(final BufferedDataTable table) throws InterruptedException {
+    public void setFully(final BufferedDataTable table) throws InterruptedException, CanceledExecutionException {
         m_rowCache.setFully(table);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setInactive() {
         m_rowCache.setInactive();
     }
 
-    /** {@inheritDoc} */
     @Override
     public void close() {
         try {
-            m_rowCache.addChunk(m_rows, true, /* ignored when 2nd arg ist true */ false);
-            m_rows = Collections.emptyList();
+            // potentially called multiple times, so should be idempotent
+            if (m_writeBatch != null) {
+                m_rowCache.addChunk(m_writeBatch.finish(), true, //
+                    /* mayBeClosed: ignored when 2nd arg ist true, since last batch implies it may be closed */ false);
+                m_writeBatch = null;
+            }
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }

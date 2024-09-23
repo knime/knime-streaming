@@ -49,18 +49,24 @@
 package org.knime.core.streaming.inoutput;
 
 import java.text.NumberFormat;
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
-import org.knime.core.data.RowIterator;
+import org.knime.core.data.container.DataRowWriteBatch;
+import org.knime.core.data.v2.RowBatch;
+import org.knime.core.data.v2.RowCursor;
+import org.knime.core.data.v2.WriteBatch;
 import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
+import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.ExecutionContext;
+import org.knime.core.node.InternalTableAPI;
 import org.knime.core.node.port.PortObject;
 import org.knime.core.node.port.inactive.InactiveBranchPortObject;
 import org.knime.core.node.streamable.InputPortRole;
@@ -111,7 +117,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     private BufferedDataTable m_stagedDataTable;
 
-    private List<DataRow> m_currentChunk;
+    private RowBatch m_currentChunk;
 
     /**
      * Indicates that the last chunk has been added, i.e., {@link #addChunk(List, boolean, boolean)} was called
@@ -311,6 +317,11 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         }
     }
 
+    static WriteBatch newStreamingWriteBatch(final DataTableSpec spec) {
+        // streaming uses fully materialized data rows that only live in memory and are not buffered to disk
+        return new DataRowWriteBatch(spec);
+    }
+
     /**
      * Called by the producer to send a new chunk downstream. This method then either blocks (because the previous chunk
      * is still being processed), sets the argument chunk as current chunk or caches the chunk.
@@ -323,23 +334,14 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      * @throws InterruptedException If interrupted while blocking.
      * @throws IllegalStateException If more rows are added while previous chunk was set to be the last one.
      */
-    boolean addChunk(final List<DataRow> rows, final boolean isLast,
+    boolean addChunk(final RowBatch readBatch, final boolean isLast,
         final boolean mayCloseOutput) throws InterruptedException {
-        CheckUtils.checkNotNull(rows, "Rows argument must not be null");
+        CheckUtils.checkNotNull(readBatch, "Rows argument must not be null");
         // implication m_isLast --> isLast ---- can't reopen
         CheckUtils.checkState(!m_isLast || isLast, "Cannot re-open row cache - isLast flag was set previously");
-        // subsequent calls with isLast==true are allowed if no rows are added
-        CheckUtils.checkState(!m_isLast || rows.isEmpty(), "Previous chunk was last one - can't add new rows");
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
         try {
-            // getPortObjectSpec may return null if setPortObjectSpec was never called - this is legit if an output port
-            // is inactive, in which case setInactive is called (instead of setPortObjectSpec) in order to wake up
-            // downstream nodes waiting for the port object spec to be set (m_portObjectSpecNotSetCondition.signalAll).
-            // However, if the port object spec is null, rows must be empty. This is the case when InMemoryRowOutput
-            // calls addChunk during its close method with isLast = true and an empty list of rows.
-            CheckUtils.checkState(getPortObjectSpec() != null || rows.isEmpty(),
-                "Can't add rows to output as no spec was set -- computeFinalSpec probably returned null");
             if (m_isLast) {
                 return false; // return value doesn't matter - but return value corresponds to the state of the consumer
             }
@@ -348,6 +350,20 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
             }
             m_hasConsumedCurrentChunkBits.clear();
             m_hasConsumedCurrentChunkBits.or(m_closedConsumersBits);
+
+            final BitSet closedReadCursorBits = new BitSet();
+            closedReadCursorBits.or(m_closedConsumersBits);
+            // subsequent calls with isLast==true are allowed if no rows are added
+            CheckUtils.checkState(!m_isLast || readBatch.size() == 0,
+                "Previous chunk was last one - can't add new rows");
+            // getPortObjectSpec may return null if setPortObjectSpec was never called - this is legit if an output port
+            // is inactive, in which case setInactive is called (instead of setPortObjectSpec) in order to wake up
+            // downstream nodes waiting for the port object spec to be set (m_portObjectSpecNotSetCondition.signalAll).
+            // However, if the port object spec is null, rows must be empty. This is the case when InMemoryRowOutput
+            // calls addChunk during its close method with isLast = true and an empty list of rows.
+            CheckUtils.checkState(getPortObjectSpec() != null || readBatch.size() == 0,
+                    "Can't add rows to output as no spec was set -- computeFinalSpec probably returned null");
+
             // all consumers are streamable and have called the #closeConsumer method
             // (e.g. a downstream row filter only accepting the first x rows)
             // signal to the source that no more output needs to be generated (via exception)
@@ -358,15 +374,18 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 // can only close output if all other output caches (= ports) for that node are also done
                 shouldCloseOutput = m_ncCacheHandle.closeOutput(this);
             }
-            m_currentChunk = rows;
+            m_currentChunk = readBatch;
             m_isLast = isLast;
             if (m_stagingDataContainer != null) {
                 assert !shouldCloseOutput : String.format("Data needs to be staged but all consumers are streamable "
                     + "and done (number threads waiting to lock: %d)", lock.getQueueLength());
-                for (DataRow r : rows) {
-                    m_stagingDataContainer.addRowToTable(r);
-                    if (Thread.interrupted()) {
-                        throw new InterruptedException();
+                try (RowCursor readCursor = m_currentChunk.cursor()) {
+                    while (readCursor.canForward()) {
+                        DataRow row = readCursor.forward().materializeDataRow();
+                        m_stagingDataContainer.addRowToTable(row);
+                        if (Thread.interrupted()) {
+                            throw new InterruptedException();
+                        }
                     }
                 }
                 if (isLast || shouldCloseOutput) {
@@ -392,9 +411,10 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      *
      * @param table The table to push.
      * @throws InterruptedException When interrupted while processing/blocking.
+     * @throws CanceledExecutionException When execution was canceled
      * @throws IllegalStateException if rows were added previously.
      */
-    public void setFully(final BufferedDataTable table) throws InterruptedException {
+    public void setFully(final BufferedDataTable table) throws InterruptedException, CanceledExecutionException {
         CheckUtils.checkArgumentNotNull(table, "Table must not be null");
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
@@ -416,16 +436,24 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 m_requirePrepareCondition.signalAll();
             }
             setPortObjectSpec(table.getDataTableSpec());
-            List<DataRow> rows = new ArrayList<DataRow>(m_chunkSize);
-            RowIterator it = table.iterator();
-            while (it.hasNext()) {
-                if (rows.size() >= m_chunkSize) {
-                    addChunk(rows, false, false);
-                    rows = new ArrayList<DataRow>(m_chunkSize);
+
+            // number of chunks
+            final long numberChunks = (table.size() + m_chunkSize - 1) / m_chunkSize;
+            final AtomicLong chunkIndex = new AtomicLong();
+            final AtomicReference<InterruptedException> exception = new AtomicReference<>();
+            InternalTableAPI.chunked(m_context, table, m_chunkSize, chunk -> {
+                try {
+                    addChunk(chunk, chunkIndex.getAndIncrement() == numberChunks -1, false);
+                    return true;
+                } catch (InterruptedException e) {
+                    exception.set(e);
+                    return false;
                 }
-                rows.add(it.next());
+            });
+            final var ex = exception.get();
+            if (ex != null) {
+                throw ex;
             }
-            addChunk(rows, true, false);
         } finally {
             lock.unlock();
         }
@@ -438,7 +466,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      * @return The next chunk or null when done.
      * @throws InterruptedException Interrupted while waiting for next chunk.
      */
-    List<DataRow> getChunk(final InMemoryRowInput consumer) throws InterruptedException {
+    RowCursor getChunk(final InMemoryRowInput consumer) throws InterruptedException {
         final int consumerID = consumer.getConsumerID();
         final ReentrantLock lock = getLock();
         lock.lockInterruptibly();
@@ -450,14 +478,14 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
                 m_requireConsumeCondition.await();
             }
             m_hasConsumedCurrentChunkBits.set(consumerID);
-            final List<DataRow> currentChunk = m_currentChunk;
+            final var currentChunk = m_currentChunk;
             if (isCurrentChunkConsumed()) {
                 m_acceptProduceCondition.signalAll();
                 if (m_isLast) {
                     m_currentChunk = null;
                 }
             }
-            return currentChunk;
+            return currentChunk.cursor();
         } finally {
             lock.unlock();
         }
@@ -488,7 +516,11 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
     }
 
     private boolean isCurrentChunkConsumed() {
-        return m_isDiamondSource || m_hasConsumedCurrentChunkBits.cardinality() >= m_streamedConsumerCount;
+        return isConsumedPerBitSet(m_hasConsumedCurrentChunkBits);
+    }
+
+    private boolean isConsumedPerBitSet(final BitSet bitSet) {
+        return m_isDiamondSource || bitSet.cardinality() >= m_streamedConsumerCount;
     }
 
     private void checkNotInUse() {

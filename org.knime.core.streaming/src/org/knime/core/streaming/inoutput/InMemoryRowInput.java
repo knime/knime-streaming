@@ -48,10 +48,11 @@
  */
 package org.knime.core.streaming.inoutput;
 
-import java.util.List;
-
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.v2.RowCursor;
+import org.knime.core.data.v2.RowRead;
 import org.knime.core.node.streamable.RowInput;
 import org.knime.core.node.workflow.ConnectionContainer;
 
@@ -65,15 +66,17 @@ public final class InMemoryRowInput extends RowInput {
     private final int m_consumerID;
     private final InMemoryRowCache m_rowCache;
     private final ConnectionContainer m_connection;
-    private List<DataRow> m_currentChunk;
-    private int m_iteratorIndex;
+
     private long m_currentRowCount;
+
+    private InterruptibleRowCursor m_cursor;
 
     InMemoryRowInput(final int consumerID, final ConnectionContainer cc, final InMemoryRowCache rowCache) {
         m_consumerID = consumerID;
         m_connection = cc;
         m_rowCache = rowCache;
         InMemoryRowCache.fireProgressEvent(m_connection, false, 0);
+        m_cursor = asCursor();
     }
 
     /** @return the consumerID */
@@ -81,16 +84,12 @@ public final class InMemoryRowInput extends RowInput {
         return m_consumerID;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isInactive() throws InterruptedException {
         m_rowCache.prepare();
         return m_rowCache.isInactive();
     }
 
-    /** {@inheritDoc} */
     @Override
     public DataTableSpec getDataTableSpec() {
         try {
@@ -101,27 +100,86 @@ public final class InMemoryRowInput extends RowInput {
         }
     }
 
-    /** {@inheritDoc} */
     @Override
-    public DataRow poll() throws InterruptedException {
-        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
-            m_currentChunk = m_rowCache.getChunk(this);
-            m_iteratorIndex = 0;
-        }
-        if (m_currentChunk == null || m_iteratorIndex >= m_currentChunk.size()) {
-            InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
-            return null;
-        } else {
-            InMemoryRowCache.fireProgressEvent(m_connection, true, m_currentRowCount++);
-            return m_currentChunk.get(m_iteratorIndex++);
-        }
+    public InterruptibleRowCursor asCursor() {
+
+        return new InterruptibleRowCursor() {
+
+            private RowCursor m_currentCursor;
+
+            @Override
+            public int getNumColumns() {
+                try {
+                    return m_rowCache.getPortObjectSpec().getNumColumns();
+                } catch (final InterruptedException e) {
+                    throw ExceptionUtils.asRuntimeException(e);
+                }
+            }
+
+            boolean currentCursorHasNext() {
+                return m_currentCursor != null && m_currentCursor.canForward();
+            }
+
+            void nextChunk() throws InterruptedException {
+                if (m_currentCursor != null) {
+                    m_currentCursor.close();
+                }
+                final var input = InMemoryRowInput.this;
+                m_currentCursor = m_rowCache.getChunk(input);
+            }
+
+            @Override
+            public RowRead forward() {
+                try {
+                    // advance if the current chunk is empty
+                    if (!currentCursorHasNext()) {
+                        nextChunk();
+                        // if there is still no chunk or the chunk after is (also) empty, we don't assume there are any
+                        // non-empty chunks left
+                        if (!currentCursorHasNext()) {
+                            InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
+                            return null;
+                        }
+                    }
+                    InMemoryRowCache.fireProgressEvent(m_connection, true, m_currentRowCount++);
+                    return m_currentCursor.forward();
+                } catch (final InterruptedException e) {
+                    throw ExceptionUtils.asRuntimeException(e);
+                }
+            }
+
+            @Override
+            public void close() {
+                final var input = InMemoryRowInput.this;
+                m_rowCache.closeConsumer(input);
+                InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
+            }
+
+            @Override
+            public boolean canForward() {
+                final var hasMore = currentCursorHasNext();
+                if (hasMore) {
+                    return true;
+                }
+                try {
+                    nextChunk();
+                    return currentCursorHasNext();
+                } catch (final InterruptedException e) {
+                    throw ExceptionUtils.asRuntimeException(e);
+                }
+            }
+        };
     }
 
-    /** {@inheritDoc} */
+    @Override
+    public DataRow poll() throws InterruptedException {
+        final var next = m_cursor.forward();
+        return next != null ? next.materializeDataRow() : null;
+    }
+
     @Override
     public void close() {
-        m_rowCache.closeConsumer(this);
-        InMemoryRowCache.fireProgressEvent(m_connection, false, m_currentRowCount);
+        m_cursor.close();
     }
 
 }
