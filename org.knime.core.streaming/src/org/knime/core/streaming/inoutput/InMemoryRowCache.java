@@ -58,10 +58,9 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
-import org.knime.core.data.container.DataRowWriteBatch;
-import org.knime.core.data.v2.RowBatch;
+import org.knime.core.data.container.DataRowBuffer;
 import org.knime.core.data.v2.RowCursor;
-import org.knime.core.data.v2.WriteBatch;
+import org.knime.core.data.v2.SizeAwareDataTable;
 import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.CanceledExecutionException;
@@ -117,7 +116,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
 
     private BufferedDataTable m_stagedDataTable;
 
-    private RowBatch m_currentChunk;
+    private SizeAwareDataTable m_currentChunk;
 
     /**
      * Indicates that the last chunk has been added, i.e., {@link #addChunk(List, boolean, boolean)} was called
@@ -317,9 +316,9 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
         }
     }
 
-    static WriteBatch newStreamingWriteBatch(final DataTableSpec spec) {
+    static DataRowBuffer newStreamingWriteBatch(final DataTableSpec spec) {
         // streaming uses fully materialized data rows that only live in memory and are not buffered to disk
-        return new DataRowWriteBatch(spec);
+        return new DataRowBuffer(spec);
     }
 
     /**
@@ -334,7 +333,7 @@ public final class InMemoryRowCache extends AbstractOutputCache<DataTableSpec> {
      * @throws InterruptedException If interrupted while blocking.
      * @throws IllegalStateException If more rows are added while previous chunk was set to be the last one.
      */
-    boolean addChunk(final RowBatch readBatch, final boolean isLast,
+    boolean addChunk(final SizeAwareDataTable readBatch, final boolean isLast,
         final boolean mayCloseOutput) throws InterruptedException {
         CheckUtils.checkNotNull(readBatch, "Rows argument must not be null");
         // implication m_isLast --> isLast ---- can't reopen

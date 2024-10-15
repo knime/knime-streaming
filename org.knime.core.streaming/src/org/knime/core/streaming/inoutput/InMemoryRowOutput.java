@@ -51,9 +51,10 @@ package org.knime.core.streaming.inoutput;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.container.DataRowBuffer;
 import org.knime.core.data.v2.RowRead;
 import org.knime.core.data.v2.RowWrite;
-import org.knime.core.data.v2.WriteBatch;
+import org.knime.core.data.v2.RowWriteCursor;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.CanceledExecutionException;
 import org.knime.core.node.streamable.RowOutput;
@@ -70,7 +71,9 @@ public final class InMemoryRowOutput extends RowOutput {
 
     private final InMemoryRowCache m_rowCache;
 
-    private WriteBatch m_writeBatch;
+    private DataRowBuffer m_writeBatch;
+
+    private RowWriteCursor m_writeCursor;
 
     private final int m_numColumns;
 
@@ -78,10 +81,12 @@ public final class InMemoryRowOutput extends RowOutput {
 
     private final RowRead m_read;
 
+
     InMemoryRowOutput(final InMemoryRowCache rowCache) {
         m_rowCache = rowCache;
         m_spec = rowCache.getPortObjectSpecNoWait();
         m_writeBatch = InMemoryRowCache.newStreamingWriteBatch(m_spec);
+        m_writeCursor = m_writeBatch.createCursor();
         m_numColumns = rowCache.getPortObjectSpecNoWait().getNumColumns();
         m_read = RowRead.suppliedBy(() -> m_row, m_numColumns);
     }
@@ -100,7 +105,7 @@ public final class InMemoryRowOutput extends RowOutput {
                         throw ExceptionUtils.asRuntimeException(e);
                     }
                 }
-                return m_writeBatch.forward();
+                return m_writeCursor.forward();
             }
 
             @Override
@@ -114,7 +119,7 @@ public final class InMemoryRowOutput extends RowOutput {
 
             @Override
             public boolean canForward() {
-                return m_writeBatch.canForward();
+                return m_writeCursor.canForward();
             }
 
         };
@@ -125,7 +130,7 @@ public final class InMemoryRowOutput extends RowOutput {
         if (m_writeBatch.size() == m_rowCache.getChunkSize()) {
             closeBatch(m_spec, false);
         }
-        final var write = m_writeBatch.forward();
+        final var write = m_writeCursor.forward();
         m_row = row;
         write.setFrom(m_read);
     }
@@ -134,6 +139,7 @@ public final class InMemoryRowOutput extends RowOutput {
         if (m_spec != spec) {
             throw new IllegalStateException("Passed different spec to close batch than what output was created with");
         }
+        m_writeCursor.close();
         if (m_rowCache.addChunk(m_writeBatch.finish(), false, mayClose)) {
             assert mayClose : "Can't close output as flag is false";
             throw new OutputClosedException();
