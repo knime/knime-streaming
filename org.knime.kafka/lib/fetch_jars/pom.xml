@@ -8,10 +8,13 @@
 
     <name>Jar fetcher for kafka plugin</name>
     <description>
-	   Running the maven goal &quot;package&quot; on this maven project will fetch all jars required 
-	   for the database pluginand put them into the libs/ directory.
-	</description>
+       Running the maven goal &quot;package&quot; on this maven project will fetch all jars required 
+       for the database pluginand put them into the libs/ directory.
+    </description>
 
+    <properties>
+        <excludeArtifacts>slf4j-api</excludeArtifacts>
+    </properties>
 
     <!-- NOTE ABOUT DEALING WITH DEPENDENCIES:
 	
@@ -57,9 +60,7 @@
                             <classifier>sources</classifier>
                             <includeScope>runtime</includeScope>
                             <outputDirectory>../</outputDirectory>
-                            <excludeArtifactIds>
-                                slf4j-api
-                            </excludeArtifactIds>
+                            <excludeArtifactIds>${excludeArtifacts}</excludeArtifactIds>
                         </configuration>
                         <phase>package</phase>
                         <goals>
@@ -71,9 +72,7 @@
                         <configuration>
                             <includeScope>runtime</includeScope>
                             <outputDirectory>../</outputDirectory>
-                            <excludeArtifactIds>
-                                slf4j-api
-                            </excludeArtifactIds>
+                            <excludeArtifactIds>${excludeArtifacts}</excludeArtifactIds>
                         </configuration>
                         <phase>package</phase>
                         <goals>

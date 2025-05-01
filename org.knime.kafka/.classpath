@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
-	<classpathentry exported="true" kind="lib" path="lib/kafka-clients-3.9.0.jar"/>
-	<classpathentry exported="true" kind="lib" path="lib/snappy-java-1.1.10.5.jar"/>
-	<classpathentry exported="true" kind="lib" path="lib/zstd-jni-1.5.6-4.jar"/>
-	<classpathentry exported="true" kind="lib" path="lib/lz4-java-1.8.0.jar"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-11"/>
+	<classpathentry exported="true" kind="lib" path="lib/kafka-clients-3.9.0.jar" sourcepath="lib/kafka-clients-3.9.0-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/snappy-java-1.1.10.5.jar" sourcepath="lib/snappy-java-1.1.10.5-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/zstd-jni-1.5.6-4.jar" sourcepath="lib/zstd-jni-1.5.6-4-sources.jar"/>
+	<classpathentry exported="true" kind="lib" path="lib/lz4-java-1.8.0.jar" sourcepath="lib/lz4-java-1.8.0-sources.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-17"/>
 	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="output" path="bin"/>

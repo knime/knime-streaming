@@ -54,7 +54,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
-import javax.activation.UnsupportedDataTypeException;
 import javax.swing.table.AbstractTableModel;
 
 import org.apache.kafka.common.config.ConfigDef;
@@ -431,7 +430,7 @@ public final class KafkaModel extends AbstractTableModel {
                 case KEY_IDX:
                     // check if the value is among the allowed rows
                     if (!m_propPool.isValid(newVal)) {
-                        throw new UnsupportedDataTypeException("The key: " + newVal + " is not supported anymore");
+                        throw new IllegalArgumentException("The key: " + newVal + " is not supported anymore");
                     }
                     break;
                 case VAL_IDX:
