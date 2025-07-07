@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Apache Kafka integration
 Bundle-SymbolicName: org.knime.kafka;singleton:=true
-Bundle-Version: 5.5.0.qualifier
+Bundle-Version: 5.6.0.qualifier
 Bundle-ClassPath: .,
  lib/kafka-clients-3.9.0.jar,
  lib/lz4-java-1.8.0.jar,
