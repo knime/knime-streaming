@@ -44,6 +44,19 @@
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
             <version>3.9.1</version>
+            <exclusions>
+                <exclusion>
+                    <!-- Exclude old lz4-java with CVEs (see AP-25723) -->
+                    <groupId>org.lz4</groupId>
+                    <artifactId>lz4-java</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- Add patched lz4-java with new groupId (changed since 1.8.1) -->
+        <dependency>
+            <groupId>at.yawk.lz4</groupId>
+            <artifactId>lz4-java</artifactId>
+            <version>1.10.3</version>
         </dependency>
     </dependencies>
 
