@@ -3,9 +3,9 @@ Bundle-ManifestVersion: 2
 Bundle-Name: Apache Kafka integration
 Bundle-SymbolicName: org.knime.kafka;singleton:=true
 Bundle-Version: 5.10.0.qualifier
-Bundle-ClassPath: .,
+Bundle-ClassPath: knime-streaming.jar,
  lib/kafka-clients-3.9.1.jar,
- lib/lz4-java-1.8.0.jar,
+ lib/lz4-java-1.10.3.jar,
  lib/snappy-java-1.1.10.5.jar,
  lib/zstd-jni-1.5.6-4.jar
 Bundle-Vendor: KNIME AG, Zurich, Switzerland
@@ -16,5 +16,6 @@ Require-Bundle: org.knime.workbench.repository;bundle-version="[5.9.0,6.0.0)",
  slf4j.api;bundle-version="[2.0.12,3.0.0)",
  org.knime.time;bundle-version="[5.10.0,6.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
+Eclipse-BundleShape: dir
 Bundle-ActivationPolicy: lazy
 Automatic-Module-Name: org.knime.kafka
