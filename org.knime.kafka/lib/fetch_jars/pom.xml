@@ -13,7 +13,7 @@
     </description>
 
     <properties>
-        <excludeArtifacts>slf4j-api</excludeArtifacts>
+        <excludeArtifacts>slf4j-api,snappy-java</excludeArtifacts>
     </properties>
 
     <!-- NOTE ABOUT DEALING WITH DEPENDENCIES:

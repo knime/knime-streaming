@@ -6,13 +6,13 @@ Bundle-Version: 5.10.0.qualifier
 Bundle-ClassPath: knime-streaming.jar,
  lib/kafka-clients-3.9.1.jar,
  lib/lz4-java-1.10.3.jar,
- lib/snappy-java-1.1.10.5.jar,
  lib/zstd-jni-1.5.6-4.jar
 Bundle-Vendor: KNIME AG, Zurich, Switzerland
 Require-Bundle: org.knime.workbench.repository;bundle-version="[5.9.0,6.0.0)",
  org.knime.base;bundle-version="[5.10.0,6.0.0)",
  org.knime.json;bundle-version="[5.10.0,6.0.0)",
  org.apache.commons.lang3;bundle-version="[3.14.0,4.0.0)",
+ org.xerial.snappy.snappy-java;bundle-version="[1.1.10,2.0.0)",
  slf4j.api;bundle-version="[2.0.12,3.0.0)",
  org.knime.time;bundle-version="[5.10.0,6.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
